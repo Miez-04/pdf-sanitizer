@@ -1,0 +1,42 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model checkpoints (large binaries — don't commit these)
+models/*.pt
+models/*.h5
+models/*.ckpt
+models/checkpoints/
+
+# Data (synthetic corpus can get large; keep raw/processed out of git)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# PDFs used for local testing (may contain real/sample PII)
+*.pdf
+!docs/**/*.pdf
+
+# Env / secrets
+.env
+*.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Build artifacts
+*.egg-info/
+build/
+dist/

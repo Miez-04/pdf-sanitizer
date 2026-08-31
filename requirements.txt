@@ -1,0 +1,23 @@
+# PDF parsing (byte-level ingestion + vector redaction)
+PyMuPDF>=1.24.0
+
+# Deep learning (Bi-LSTM-CRF)
+torch>=2.2.0
+pytorch-crf>=0.7.2
+
+# Tokenization / NLP utilities
+spacy>=3.7.0
+
+# Data handling
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Evaluation
+scikit-learn>=1.4.0
+seqeval>=1.2.2
+
+# UI (HITL workspace) — swap for Flask+React later if needed
+streamlit>=1.32.0
+
+# Dev
+pytest>=8.0.0

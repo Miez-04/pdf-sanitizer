@@ -1,0 +1,7 @@
+[server]
+# Without this, Streamlit's dev-mode file watcher scans the entire
+# project directory on every run, including data/raw/ (news-30k.json
+# alone is ~66MB) — this caused multi-minute hangs on startup during
+# testing. fileWatcherType = "none" disables hot-reload-on-save; just
+# refresh the browser manually after editing ui/app.py.
+fileWatcherType = "none"

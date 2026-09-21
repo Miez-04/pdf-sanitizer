@@ -52,8 +52,8 @@ pip install -r requirements.txt
 ## Roadmap
 
 1. [x] Repo scaffold
-2. [ ] PDF ingestion & spatial layer (`pdf_ingestion/`)
-3. [ ] Regex engine (`regex_engine/`)
+2. [x] PDF ingestion & spatial layer (`pdf_ingestion/`)
+3. [x] Regex engine (`regex_engine/`)
 4. [ ] Semi-synthetic dataset pipeline (`data/`)
 5. [ ] Bi-LSTM-CRF model + training (`models/`)
 6. [ ] Conflict resolution & vector redaction (`pipeline/`)

@@ -8,13 +8,20 @@ pytorch-crf>=0.7.2
 # Tokenization / NLP utilities
 spacy>=3.7.0
 
+# Pattern matching (Tier 1 regex engine — third-party `regex`, not
+# stdlib `re`; needed by regex_engine/patterns.py)
+regex>=2023.0.0
+
 # Data handling
 numpy>=1.26.0
 pandas>=2.2.0
 
 # Evaluation
 scikit-learn>=1.4.0
-seqeval>=1.2.2
+# Pinned exact (not >=) — newer seqeval releases have failed to build
+# from source on some Windows/Python combos (broken setuptools_scm
+# chain). If you hit that, run: pip install "setuptools_scm<8"  first.
+seqeval==1.2.2
 
 # UI (HITL workspace) — swap for Flask+React later if needed
 streamlit>=1.32.0

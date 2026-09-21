@@ -1,0 +1,10 @@
+              precision    recall  f1-score   support
+
+     ADDRESS     1.0000    1.0000    1.0000        97
+        NRIC     0.6654    1.0000    0.7991       179
+      PERSON     0.9706    0.9778    0.9742       135
+       PHONE     1.0000    0.5263    0.6897       190
+
+   micro avg     0.8439    0.8453    0.8446       601
+   macro avg     0.9090    0.8760    0.8657       601
+weighted avg     0.8937    0.8453    0.8363       601

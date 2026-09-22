@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF Sanitizer</title>
+<style>
+  :root {
+    --purple: #5b4fe8;
+    --purple-dark: #4a3fd1;
+    --bg: #f3f2fd;
+    --card-bg: #ffffff;
+    --text: #1f2430;
+    --text-muted: #6b7280;
+    --border: #e5e3f7;
+    --person: #16a34a;
+    --nric: #2563eb;
+    --phone: #7c3aed;
+    --address: #dc2626;
+    --custom: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px; background: #fff; border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--purple); }
+  .topbar-actions { display: flex; gap: 10px; }
+  button { font: inherit; cursor: pointer; border: none; border-radius: 8px; }
+  .btn-primary { background: var(--purple); color: #fff; padding: 10px 18px; font-weight: 600; }
+  .btn-primary:hover { background: var(--purple-dark); }
+  .btn-primary:disabled { background: #b8b3f0; cursor: not-allowed; }
+  .btn-secondary { background: #fff; color: var(--text); padding: 10px 16px; border: 1px solid var(--border); font-weight: 600; }
+  .btn-secondary:hover { background: #f7f7fb; }
+
+  /* ---------- Landing view ---------- */
+  #landing {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 80vh; text-align: center; padding: 40px;
+  }
+  #landing h1 { font-size: 34px; margin-bottom: 8px; }
+  #landing p.sub { color: var(--text-muted); max-width: 520px; margin-bottom: 28px; }
+  #drop-zone {
+    background: var(--purple); color: #fff; padding: 18px 36px; border-radius: 12px;
+    font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px rgba(91,79,232,0.25);
+  }
+  #drop-zone:hover { background: var(--purple-dark); }
+  #drop-hint { color: var(--text-muted); margin-top: 10px; font-size: 14px; }
+  .feature-row { display: flex; gap: 28px; margin-top: 36px; color: var(--text-muted); font-size: 14px; }
+  #file-input { display: none; }
+
+  /* ---------- Review view ---------- */
+  #review { display: none; }
+  .filename-bar { padding: 10px 28px; background: #fff; border-bottom: 1px solid var(--border); }
+  .filename-chip { background: var(--bg); color: var(--purple-dark); padding: 6px 14px; border-radius: 8px; font-weight: 600; font-size: 14px; display: inline-block; }
+
+  .layout { display: flex; gap: 20px; padding: 20px 28px; }
+  .sidebar {
+    width: 90px; display: flex; flex-direction: column; gap: 10px; max-height: 78vh; overflow-y: auto;
+  }
+  .thumb {
+    background: #fff; border: 2px solid transparent; border-radius: 8px; padding: 6px;
+    cursor: pointer; text-align: center; font-size: 11px; color: var(--text-muted);
+  }
+  .thumb.active { border-color: var(--purple); }
+  .thumb img { width: 100%; border-radius: 4px; display: block; margin-bottom: 4px; }
+
+  .main-panel {
+    flex: 1; background: var(--bg); border-radius: 14px; padding: 20px;
+    display: flex; flex-direction: column; align-items: center;
+    height: calc(100vh - 150px); /* topbar + filename-bar height, leaves room for the pager below */
+    box-sizing: border-box;
+  }
+  .page-wrap {
+    position: relative; display: inline-flex; background: #fff; border-radius: 6px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  }
+  .page-wrap img { display: block; max-height: calc(100vh - 240px); width: auto; max-width: 100%; border-radius: 6px; }
+  .entity-pill-overlay {
+    position: absolute; border: 1.5px solid; border-radius: 3px;
+    pointer-events: auto; cursor: pointer;
+    transition: outline 0.15s ease, filter 0.15s ease;
+  }
+  .entity-pill-overlay:hover { filter: brightness(0.92); }
+  .entity-pill-overlay.flash { outline: 3px solid #facc15; outline-offset: 1px; }
+  .entity-pill-overlay .tag-label {
+    position: absolute; top: -15px; left: -1.5px;
+    font-size: 9px; font-weight: 800; line-height: 1.4;
+    padding: 0 4px; border-radius: 3px; border: 1px solid currentColor;
+    white-space: nowrap; background: #fff;
+  }
+  .type-PERSON  { background: rgba(22,163,74,0.30);  border-color: var(--person);  color: var(--person); }
+  .type-NRIC    { background: rgba(37,99,235,0.30);  border-color: var(--nric);    color: var(--nric); }
+  .type-PHONE   { background: rgba(124,58,237,0.30); border-color: var(--phone);   color: var(--phone); }
+  .type-ADDRESS { background: rgba(220,38,38,0.30);  border-color: var(--address); color: var(--address); }
+  .type-CUSTOM  { background: rgba(217,119,6,0.30);  border-color: var(--custom);  color: var(--custom); }
+
+  .pager {
+    display: flex; align-items: center; gap: 16px; margin-top: 16px;
+    background: #fff; border-radius: 10px; padding: 8px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .pager button { background: var(--bg); color: var(--text); padding: 8px 14px; font-weight: 600; }
+  .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pager span { font-size: 14px; color: var(--text-muted); min-width: 90px; text-align: center; }
+
+  .right-panel { width: 340px; background: #fff; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; }
+  .right-panel h3 { margin: 0 0 2px; font-size: 16px; }
+  .right-panel .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+
+  .pill-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .pill { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1.5px solid transparent; }
+  .pill.all { background: var(--purple); color: #fff; }
+  .pill.PERSON { background: #ecfdf3; color: var(--person); }
+  .pill.NRIC { background: #eff6ff; color: var(--nric); }
+  .pill.PHONE { background: #f5f3ff; color: var(--phone); }
+  .pill.ADDRESS { background: #fef2f2; color: var(--address); }
+  .pill.CUSTOM { background: #fffbeb; color: var(--custom); }
+  .pill.active-filter { border-color: currentColor; }
+
+  .mask-own { margin-bottom: 16px; }
+  .mask-own label { font-weight: 700; font-size: 13px; display: block; margin-bottom: 2px; }
+  .mask-own .hint { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+  .mask-own-row { display: flex; gap: 8px; }
+  .mask-own-row input {
+    flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit;
+  }
+  .mask-own-row select {
+    padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-weight: 600;
+    background: #fff; color: var(--text);
+  }
+  .mask-own-row button { background: var(--purple); color: #fff; width: 38px; font-size: 18px; font-weight: 700; }
+  .mask-own-row button:hover { background: var(--purple-dark); }
+
+  /* ---- the required scrollable, height-capped entity list ---- */
+  #entity-list {
+    max-height: 340px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-bottom: 12px;
+  }
+  .entity-row {
+    display: flex; align-items: flex-start; gap: 10px; padding: 10px 4px; cursor: pointer;
+    border-radius: 8px;
+  }
+  .entity-row:hover { background: var(--bg); }
+  .entity-row .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+  .entity-row .dot.PERSON { background: var(--person); }
+  .entity-row .dot.NRIC { background: var(--nric); }
+  .entity-row .dot.PHONE { background: var(--phone); }
+  .entity-row .dot.ADDRESS { background: var(--address); }
+  .entity-row .dot.CUSTOM { background: var(--custom); }
+  .entity-row .info { flex: 1; min-width: 0; }
+  .entity-row .text { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .entity-row .meta { font-size: 11px; margin-top: 2px; }
+  .entity-row .meta .type { font-weight: 700; }
+  .entity-row .meta .type.PERSON { color: var(--person); }
+  .entity-row .meta .type.NRIC { color: var(--nric); }
+  .entity-row .meta .type.PHONE { color: var(--phone); }
+  .entity-row .meta .type.ADDRESS { color: var(--address); }
+  .entity-row .meta .type.CUSTOM { color: var(--custom); }
+  .entity-row .meta .loc { color: var(--text-muted); }
+  .entity-row input[type=checkbox] { margin-top: 6px; }
+
+  .totals { border-top: 1px solid var(--border); padding-top: 12px; margin-bottom: 14px; font-size: 13px; }
+  .totals .row { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted); }
+  .totals .row b { color: var(--text); }
+  .totals .row .yes { color: var(--person); font-weight: 700; }
+
+  #status-banner {
+    display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px; z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><div class="logo"></div> PDF Sanitizer</div>
+  <div class="topbar-actions" id="review-topbar-actions" style="display:none;">
+    <button class="btn-secondary" onclick="resetToLanding()">← New file</button>
+    <button class="btn-primary" onclick="sanitizeAndDownload()">Sanitize PDF</button>
+  </div>
+</div>
+
+<div id="status-banner"></div>
+
+<!-- ============ LANDING ============ -->
+<div id="landing">
+  <h1>Sanitize PDF</h1>
+  <p class="sub">Automatically mask names, MyKad numbers, phone numbers, and addresses in Malaysian documents. All processing stays on your device.</p>
+  <label id="drop-zone" for="file-input">Select PDF file</label>
+  <input type="file" id="file-input" accept="application/pdf">
+  <div id="drop-hint">or drop PDF here</div>
+  <div class="feature-row">
+    <span>Offline processing</span>
+    <span>PDPA compliant</span>
+    <span>Files never uploaded</span>
+    <span>AI-powered detection</span>
+  </div>
+</div>
+
+<!-- ============ REVIEW ============ -->
+<div id="review">
+  <div class="filename-bar"><span class="filename-chip" id="filename-chip"></span></div>
+
+  <div class="layout">
+    <div class="sidebar" id="thumb-sidebar"></div>
+
+    <div class="main-panel">
+      <div class="page-wrap">
+        <img id="page-image" src="" alt="page">
+        <div id="overlay-layer"></div>
+      </div>
+      <!-- bottom pagination -->
+      <div class="pager">
+        <button id="prev-btn" onclick="goToPage(currentPage - 1)">‹ Prev</button>
+        <span id="page-indicator">Page 1 of 1</span>
+        <button id="next-btn" onclick="goToPage(currentPage + 1)">Next ›</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <h3>Detected entities</h3>
+      <div class="sub" id="entities-sub">0 items masked · review before download</div>
+
+      <div class="pill-filters" id="pill-filters"></div>
+
+      <div class="mask-own">
+        <label>Mask your own words</label>
+        <div class="hint">Add any word or phrase to mask, even if it wasn't auto-detected.</div>
+        <div class="mask-own-row">
+          <input type="text" id="mask-own-input" placeholder="e.g. Ahmad Trading Sdn Bhd">
+          <select id="mask-own-type">
+            <option value="PERSON">Person</option>
+            <option value="NRIC">NRIC</option>
+            <option value="PHONE">Phone</option>
+            <option value="ADDRESS">Address</option>
+          </select>
+          <button onclick="addOwnWord()">+</button>
+        </div>
+      </div>
+
+      <div id="entity-list"></div>
+
+      <div class="totals">
+        <div class="row"><span>Total masked</span><b id="total-masked">0</b></div>
+        <div class="row"><span>Pages processed</span><b id="pages-processed">0</b></div>
+        <div class="row"><span>Layout preserved</span><span class="yes">Yes</span></div>
+      </div>
+
+      <button class="btn-primary" onclick="sanitizeAndDownload()">Download sanitized PDF</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ENTITY_TYPES = ["PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"];
+
+let docId = null;
+let numPages = 1;
+let currentPage = 1;
+let entities = [];        // full list from backend
+let excludedIds = new Set();
+let activeFilter = "all"; // "all" | one of ENTITY_TYPES
+let pageDims = {};        // page -> {width, height} in PDF points
+
+function showStatus(msg, ms = 2000) {
+  const el = document.getElementById("status-banner");
+  el.textContent = msg;
+  el.style.display = "block";
+  if (ms) setTimeout(() => el.style.display = "none", ms);
+}
+
+// ---------------- Upload ----------------
+document.getElementById("file-input").addEventListener("change", (e) => {
+  if (e.target.files.length) uploadFile(e.target.files[0]);
+});
+const dz = document.getElementById("drop-zone");
+document.body.addEventListener("dragover", (e) => e.preventDefault());
+document.body.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (document.getElementById("landing").style.display === "none") return;
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+
+async function uploadFile(file) {
+  showStatus("Analyzing document…", 0);
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+    const data = await res.json();
+    docId = data.doc_id;
+    numPages = data.num_pages;
+    entities = data.entities;
+    excludedIds = new Set();
+    pageDims = {};
+    data.pages.forEach(p => pageDims[p.page] = { width: p.width, height: p.height });
+
+    document.getElementById("filename-chip").textContent = data.filename;
+    document.getElementById("landing").style.display = "none";
+    document.getElementById("review").style.display = "block";
+    document.getElementById("review-topbar-actions").style.display = "flex";
+
+    buildThumbnails();
+    buildPillFilters();
+    renderEntityList();
+    updateTotals();
+    goToPage(1);
+    document.getElementById("status-banner").style.display = "none";
+  } catch (err) {
+    showStatus("Error: " + err.message, 4000);
+  }
+}
+
+function resetToLanding() {
+  document.getElementById("review").style.display = "none";
+  document.getElementById("review-topbar-actions").style.display = "none";
+  document.getElementById("landing").style.display = "flex";
+  document.getElementById("file-input").value = "";
+  docId = null;
+}
+
+// ---------------- Thumbnails / paging ----------------
+function buildThumbnails() {
+  const sidebar = document.getElementById("thumb-sidebar");
+  sidebar.innerHTML = "";
+  for (let p = 1; p <= numPages; p++) {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    div.id = `thumb-${p}`;
+    div.onclick = () => goToPage(p);
+    const img = document.createElement("img");
+    img.src = `/api/page/${docId}/${p}.png?zoom=0.3`;
+    div.appendChild(img);
+    const label = document.createElement("div");
+    label.textContent = p;
+    div.appendChild(label);
+    sidebar.appendChild(div);
+  }
+}
+
+function goToPage(p) {
+  if (p < 1 || p > numPages) return;
+  currentPage = p;
+  document.getElementById("page-image").src = `/api/page/${docId}/${p}.png?zoom=1.6`;
+  document.getElementById("page-indicator").textContent = `Page ${p} of ${numPages}`;
+  document.getElementById("prev-btn").disabled = p === 1;
+  document.getElementById("next-btn").disabled = p === numPages;
+  document.querySelectorAll(".thumb").forEach(t => t.classList.remove("active"));
+  const activeThumb = document.getElementById(`thumb-${p}`);
+  if (activeThumb) activeThumb.classList.add("active");
+  document.getElementById("page-image").onload = renderOverlays;
+}
+
+function renderOverlays() {
+  const layer = document.getElementById("overlay-layer");
+  layer.innerHTML = "";
+  const img = document.getElementById("page-image");
+  const dims = pageDims[currentPage];
+  if (!dims) return;
+  const scaleX = img.clientWidth / dims.width;
+  const scaleY = img.clientHeight / dims.height;
+
+  entities
+    .filter(e => e.page === currentPage && !excludedIds.has(e.id))
+    .forEach(e => {
+      const el = document.createElement("div");
+      el.className = `entity-pill-overlay type-${e.type}`;
+      el.id = `overlay-${e.id}`;
+      el.title = e.text;
+      el.style.left = (e.bbox.x0 * scaleX) + "px";
+      el.style.top = (e.bbox.y0 * scaleY) + "px";
+      el.style.width = Math.max(2, (e.bbox.x1 - e.bbox.x0) * scaleX) + "px";
+      el.style.height = Math.max(2, (e.bbox.y1 - e.bbox.y0) * scaleY) + "px";
+
+      const label = document.createElement("span");
+      label.className = "tag-label";
+      label.textContent = e.type;
+      el.appendChild(label);
+
+      el.onclick = () => jumpToEntity(e);
+      layer.appendChild(el);
+    });
+}
+
+// ---------------- Right panel: filters + list ----------------
+function buildPillFilters() {
+  const counts = { PERSON: 0, NRIC: 0, PHONE: 0, ADDRESS: 0, CUSTOM: 0 };
+  entities.forEach(e => { if (counts[e.type] !== undefined) counts[e.type]++; });
+  const container = document.getElementById("pill-filters");
+  container.innerHTML = "";
+
+  const allPill = document.createElement("span");
+  allPill.className = "pill all" + (activeFilter === "all" ? " active-filter" : "");
+  allPill.textContent = `All ${entities.length}`;
+  allPill.onclick = () => { activeFilter = "all"; buildPillFilters(); renderEntityList(); };
+  container.appendChild(allPill);
+
+  ENTITY_TYPES.forEach(t => {
+    if (counts[t] === 0) return;
+    const pill = document.createElement("span");
+    pill.className = `pill ${t}` + (activeFilter === t ? " active-filter" : "");
+    const label = t === "PERSON" ? "Person" : t === "ADDRESS" ? "Addr" : t.charAt(0) + t.slice(1).toLowerCase();
+    pill.textContent = `${label} ×${counts[t]}`;
+    pill.onclick = () => { activeFilter = t; buildPillFilters(); renderEntityList(); };
+    container.appendChild(pill);
+  });
+}
+
+function renderEntityList() {
+  const list = document.getElementById("entity-list");
+  list.innerHTML = "";
+  const filtered = activeFilter === "all" ? entities : entities.filter(e => e.type === activeFilter);
+
+  filtered.forEach(e => {
+    const row = document.createElement("div");
+    row.className = "entity-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = !excludedIds.has(e.id);
+    checkbox.onclick = (ev) => {
+      ev.stopPropagation();
+      toggleEntity(e.id, checkbox.checked);
+    };
+
+    const dot = document.createElement("div");
+    dot.className = `dot ${e.type}`;
+
+    const info = document.createElement("div");
+    info.className = "info";
+    const textEl = document.createElement("div");
+    textEl.className = "text";
+    textEl.textContent = e.text;
+    const metaEl = document.createElement("div");
+    metaEl.className = "meta";
+    metaEl.innerHTML = `<span class="type ${e.type}">${e.type}</span> <span class="loc">· pg ${e.page}${e.line ? " · line " + e.line : ""}</span>`;
+    info.appendChild(textEl);
+    info.appendChild(metaEl);
+
+    row.appendChild(checkbox);
+    row.appendChild(dot);
+    row.appendChild(info);
+
+    // Click anywhere on the row (not the checkbox) -> jump to that
+    // entity's page immediately and flash its overlay, per the request:
+    // "if i pressed at the words in the list it can show the pdf page
+    // right away."
+    row.onclick = () => jumpToEntity(e);
+
+    list.appendChild(row);
+  });
+}
+
+function jumpToEntity(e) {
+  const samePage = e.page === currentPage;
+  goToPage(e.page);
+  const flashIt = () => {
+    const overlay = document.getElementById(`overlay-${e.id}`);
+    if (overlay) {
+      overlay.scrollIntoView({ behavior: "smooth", block: "center" });
+      overlay.classList.add("flash");
+      setTimeout(() => overlay.classList.remove("flash"), 1200);
+    }
+  };
+  if (samePage) flashIt();
+  else setTimeout(flashIt, 250); // wait for the new page image to render
+}
+
+function toggleEntity(id, include) {
+  if (include) excludedIds.delete(id); else excludedIds.add(id);
+  fetch(`/api/toggle/${docId}/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ include }),
+  });
+  renderOverlays();
+  updateTotals();
+}
+
+function updateTotals() {
+  const activeCount = entities.filter(e => !excludedIds.has(e.id)).length;
+  document.getElementById("entities-sub").textContent = `${activeCount} items masked · review before download`;
+  document.getElementById("total-masked").textContent = activeCount;
+  document.getElementById("pages-processed").textContent = numPages;
+}
+
+// ---------------- Mask your own words ----------------
+async function addOwnWord() {
+  const input = document.getElementById("mask-own-input");
+  const typeSelect = document.getElementById("mask-own-type");
+  const phrase = input.value.trim();
+  const entityType = typeSelect.value;
+  if (!phrase || !docId) return;
+  input.value = "";
+  showStatus(`Searching for "${phrase}"…`, 0);
+  const res = await fetch("/api/mask-word", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ doc_id: docId, phrase, entity_type: entityType }),
+  });
+  const data = await res.json();
+  document.getElementById("status-banner").style.display = "none";
+  if (!data.entities || data.entities.length === 0) {
+    showStatus(`No matches found for "${phrase}"`, 2500);
+    return;
+  }
+  entities = entities.concat(data.entities);
+  buildPillFilters();
+  renderEntityList();
+  updateTotals();
+  renderOverlays();
+  showStatus(`Added ${data.entities.length} match(es) for "${phrase}"`, 2500);
+}
+document.getElementById("mask-own-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") addOwnWord();
+});
+
+// ---------------- Sanitize + download ----------------
+async function sanitizeAndDownload() {
+  if (!docId) return;
+  showStatus("Applying redactions…", 0);
+  const res = await fetch(`/api/sanitize/${docId}`, { method: "POST" });
+  if (!res.ok) {
+    showStatus("Sanitize failed", 3000);
+    return;
+  }
+  document.getElementById("status-banner").style.display = "none";
+  window.location.href = `/api/download/${docId}`;
+}
+</script>
+</body>
+</html>

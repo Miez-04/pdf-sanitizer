@@ -93,38 +93,10 @@ def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:
         # predicted, which is what the original override bug was about.
         if any(t.label != "O" and not t.label.endswith("ADDRESS") for t in span):
             continue
-
-        # Does this heuristic span pick up right where an existing
-        # ADDRESS entity (model- or regex-tagged) left off? If so,
-        # CONTINUE it (I-ADDRESS) instead of starting a fresh one
-        # (B-ADDRESS) — otherwise pipeline.coordinate_merge treats the
-        # new B- as a separate entity, producing two adjacent
-        # redaction boxes for what is really one address. Confirmed
-        # via real-PDF testing: "No." tagged B-ADDRESS by the model,
-        # then "55, Jalan Pasir Pinji 3, ..." filled by this heuristic
-        # as its OWN B-ADDRESS-started span right after — same bug for
-        # the reverse order (heuristic fills first, model's tagging
-        # picks up immediately after and would otherwise re-B-ADDRESS).
-        continues_before = (
-            start_idx > 0 and page.tokens[start_idx - 1].label.endswith("ADDRESS")
-        )
-
         for i, token in enumerate(span):
-            if i == 0 and continues_before:
-                token.label = "I-ADDRESS"
-            else:
-                token.label = "B-ADDRESS" if i == 0 else "I-ADDRESS"
+            token.label = "B-ADDRESS" if i == 0 else "I-ADDRESS"
             token.source = HEURISTIC_SOURCE
             filled += 1
-
-        # Symmetric case: this heuristic span fills a gap immediately
-        # BEFORE tokens the model/regex already tagged — that
-        # following token is a continuation too now, not a new entity,
-        # so it must not still be a "B-ADDRESS" once this span merges
-        # into it.
-        if end_idx < len(page.tokens) and page.tokens[end_idx].label == "B-ADDRESS":
-            page.tokens[end_idx].label = "I-ADDRESS"
-
     return filled
 
 

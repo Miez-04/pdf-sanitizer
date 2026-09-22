@@ -38,7 +38,7 @@ from regex_engine.matcher import build_regex_mask_registry
 # use — v4 is the current recommended checkpoint (best adversarial
 # score among the checkpoints trained during this project; see
 # eval/results/ for the comparison).
-DEFAULT_CHECKPOINT = "models/checkpoints_v17/best_model.pt"
+DEFAULT_CHECKPOINT = "models/checkpoints_v18/best_model.pt"
 
 ENTITY_COLORS = {
     "PERSON": (0.78, 0.64, 0.88),

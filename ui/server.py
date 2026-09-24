@@ -43,7 +43,7 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from pdf_ingestion.extractor import PDFIngestor
 from pipeline.conflict_resolution import resolve_document
-from pipeline.coordinate_merge import EntitySpan, merge_document_spans
+from pipeline.coordinate_merge import EntitySpan, _split_into_line_runs, merge_document_spans
 from pipeline.inference import TierTwoPredictor
 from pipeline.redaction import apply_redactions
 from regex_engine.matcher import build_regex_mask_registry
@@ -84,7 +84,13 @@ def _span_to_dict(span_id: str, span: EntitySpan, line_no: int) -> dict:
         "type": span.entity_type,
         "page": span.page_num + 1,  # 1-indexed for the UI
         "line": line_no,
-        "bbox": {"x0": span.bbox.x0, "y0": span.bbox.y0, "x1": span.bbox.x1, "y1": span.bbox.y1},
+        # One rect PER VISUAL LINE the span crosses (see
+        # pipeline.coordinate_merge.EntitySpan.bboxes) — a wrapped
+        # multi-line address is 2+ boxes here, not one box spanning
+        # both lines plus everything in between them.
+        "bboxes": [
+            {"x0": b.x0, "y0": b.y0, "x1": b.x1, "y1": b.y1} for b in span.bboxes
+        ],
         "source": span.source,
         "confidence": round(confidence, 3),
     }
@@ -233,10 +239,18 @@ def mask_word():
             bbox = match_tokens[0].bbox
             for t in match_tokens[1:]:
                 bbox = bbox.union(t.bbox)
+            line_runs = _split_into_line_runs(match_tokens)
+            bboxes = []
+            for run in line_runs:
+                run_bbox = run[0].bbox
+                for t in run[1:]:
+                    run_bbox = run_bbox.union(t.bbox)
+                bboxes.append(run_bbox)
             span_kwargs = dict(
                 entity_type=entity_type,
                 text=" ".join(t.text for t in match_tokens),
                 bbox=bbox,
+                bboxes=tuple(bboxes),
                 page_num=page.page_num,
                 token_indices=tuple(t.token_index for t in match_tokens),
                 source="manual",

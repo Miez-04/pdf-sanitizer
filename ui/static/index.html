@@ -75,14 +75,12 @@
   .main-panel {
     flex: 1; background: var(--bg); border-radius: 14px; padding: 20px;
     display: flex; flex-direction: column; align-items: center;
-    height: calc(100vh - 150px); /* topbar + filename-bar height, leaves room for the pager below */
-    box-sizing: border-box;
   }
   .page-wrap {
     position: relative; display: inline-flex; background: #fff; border-radius: 6px;
     box-shadow: 0 4px 18px rgba(0,0,0,0.08);
   }
-  .page-wrap img { display: block; max-height: calc(100vh - 240px); width: auto; max-width: 100%; border-radius: 6px; }
+  .page-wrap img { display: block; max-width: 100%; border-radius: 6px; }
   .entity-pill-overlay {
     position: absolute; border: 1.5px solid; border-radius: 3px;
     pointer-events: auto; cursor: pointer;
@@ -91,11 +89,16 @@
   .entity-pill-overlay:hover { filter: brightness(0.92); }
   .entity-pill-overlay.flash { outline: 3px solid #facc15; outline-offset: 1px; }
   .entity-pill-overlay .tag-label {
-    position: absolute; top: -15px; left: -1.5px;
-    font-size: 9px; font-weight: 800; line-height: 1.4;
-    padding: 0 4px; border-radius: 3px; border: 1px solid currentColor;
-    white-space: nowrap; background: #fff;
+    position: absolute; top: 0; left: 0; color: #fff;
+    font-size: 8px; font-weight: 800; line-height: 1;
+    padding: 1px 3px; border-radius: 2px 0 3px 0;
+    white-space: nowrap;
   }
+  .type-PERSON .tag-label  { background: var(--person); }
+  .type-NRIC .tag-label    { background: var(--nric); }
+  .type-PHONE .tag-label   { background: var(--phone); }
+  .type-ADDRESS .tag-label { background: var(--address); }
+  .type-CUSTOM .tag-label  { background: var(--custom); }
   .type-PERSON  { background: rgba(22,163,74,0.30);  border-color: var(--person);  color: var(--person); }
   .type-NRIC    { background: rgba(37,99,235,0.30);  border-color: var(--nric);    color: var(--nric); }
   .type-PHONE   { background: rgba(124,58,237,0.30); border-color: var(--phone);   color: var(--phone); }
@@ -127,16 +130,19 @@
   .mask-own { margin-bottom: 16px; }
   .mask-own label { font-weight: 700; font-size: 13px; display: block; margin-bottom: 2px; }
   .mask-own .hint { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
-  .mask-own-row { display: flex; gap: 8px; }
-  .mask-own-row input {
+  .mask-own-fields { display: flex; gap: 8px; margin-bottom: 8px; }
+  .mask-own-fields input {
     flex: 1; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit;
   }
-  .mask-own-row select {
+  .mask-own-fields select {
     padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-weight: 600;
     background: #fff; color: var(--text);
   }
-  .mask-own-row button { background: var(--purple); color: #fff; width: 38px; font-size: 18px; font-weight: 700; }
-  .mask-own-row button:hover { background: var(--purple-dark); }
+  .mask-own-add {
+    width: 100%; background: var(--purple); color: #fff; padding: 10px;
+    border-radius: 8px; font-weight: 700; font-size: 14px;
+  }
+  .mask-own-add:hover { background: var(--purple-dark); }
 
   /* ---- the required scrollable, height-capped entity list ---- */
   #entity-list {
@@ -236,7 +242,7 @@
       <div class="mask-own">
         <label>Mask your own words</label>
         <div class="hint">Add any word or phrase to mask, even if it wasn't auto-detected.</div>
-        <div class="mask-own-row">
+        <div class="mask-own-fields">
           <input type="text" id="mask-own-input" placeholder="e.g. Ahmad Trading Sdn Bhd">
           <select id="mask-own-type">
             <option value="PERSON">Person</option>
@@ -244,8 +250,8 @@
             <option value="PHONE">Phone</option>
             <option value="ADDRESS">Address</option>
           </select>
-          <button onclick="addOwnWord()">+</button>
         </div>
+        <button class="mask-own-add" onclick="addOwnWord()">Add word</button>
       </div>
 
       <div id="entity-list"></div>
@@ -374,22 +380,30 @@ function renderOverlays() {
   entities
     .filter(e => e.page === currentPage && !excludedIds.has(e.id))
     .forEach(e => {
-      const el = document.createElement("div");
-      el.className = `entity-pill-overlay type-${e.type}`;
-      el.id = `overlay-${e.id}`;
-      el.title = e.text;
-      el.style.left = (e.bbox.x0 * scaleX) + "px";
-      el.style.top = (e.bbox.y0 * scaleY) + "px";
-      el.style.width = Math.max(2, (e.bbox.x1 - e.bbox.x0) * scaleX) + "px";
-      el.style.height = Math.max(2, (e.bbox.y1 - e.bbox.y0) * scaleY) + "px";
+      e.bboxes.forEach((box, i) => {
+        const el = document.createElement("div");
+        el.className = `entity-pill-overlay type-${e.type}`;
+        el.id = i === 0 ? `overlay-${e.id}` : `overlay-${e.id}-${i}`;
+        el.title = e.text;
+        el.style.left = (box.x0 * scaleX) + "px";
+        el.style.top = (box.y0 * scaleY) + "px";
+        el.style.width = Math.max(2, (box.x1 - box.x0) * scaleX) + "px";
+        el.style.height = Math.max(2, (box.y1 - box.y0) * scaleY) + "px";
 
-      const label = document.createElement("span");
-      label.className = "tag-label";
-      label.textContent = e.type;
-      el.appendChild(label);
+        // Only the first line-segment gets the tiny type label — same
+        // reasoning as pipeline/redaction.py only labeling the first
+        // rect of a multi-line span: repeating it on every line would
+        // be redundant clutter.
+        if (i === 0) {
+          const label = document.createElement("span");
+          label.className = "tag-label";
+          label.textContent = e.type;
+          el.appendChild(label);
+        }
 
-      el.onclick = () => jumpToEntity(e);
-      layer.appendChild(el);
+        el.onclick = () => jumpToEntity(e);
+        layer.appendChild(el);
+      });
     });
 }
 

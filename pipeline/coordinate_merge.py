@@ -24,10 +24,40 @@ from pdf_ingestion.schema import BBox, PageTokens, Token
 class EntitySpan:
     entity_type: str        # "PERSON" | "ADDRESS" | "NRIC" | "PHONE"
     text: str                # tokens' text joined by single spaces
-    bbox: BBox
+    bbox: BBox                # union of every token — kept for quick/summary use
     page_num: int
     token_indices: tuple[int, ...]
     source: str               # "regex" | "model" (or "mixed", see note below)
+    bboxes: tuple[BBox, ...] = ()  # one bbox PER VISUAL LINE the span crosses —
+                                     # this is what redaction/rendering should
+                                     # actually use. A span wrapping a line break
+                                     # (e.g. a 2-line address) is one union box in
+                                     # `bbox` but two separate rects here, so
+                                     # nothing in between the two lines gets
+                                     # swept up. Defaults to just (bbox,) via
+                                     # __post_init__ for any span constructed by
+                                     # hand (tests, ui/server.py's manual
+                                     # mask-word spans) without knowing about
+                                     # per-line splitting — single-token/single-
+                                     # line spans are correct either way.
+
+    def __post_init__(self):
+        if not self.bboxes:
+            self.bboxes = (self.bbox,)
+
+
+def _split_into_line_runs(tokens: list[Token]) -> list[list[Token]]:
+    """Groups a span's tokens into consecutive runs that share the same
+    (block_no, line_no) — i.e. one run per visual line the span crosses.
+    Tokens within one entity are already in document order, so a change
+    in (block_no, line_no) reliably marks a line wrap."""
+    runs: list[list[Token]] = []
+    for token in tokens:
+        if runs and (runs[-1][-1].block_no, runs[-1][-1].line_no) == (token.block_no, token.line_no):
+            runs[-1].append(token)
+        else:
+            runs.append([token])
+    return runs
 
 
 def merge_page_spans(page: PageTokens) -> list[EntitySpan]:
@@ -42,6 +72,14 @@ def merge_page_spans(page: PageTokens) -> list[EntitySpan]:
         for t in current_tokens[1:]:
             bbox = bbox.union(t.bbox)
 
+        line_runs = _split_into_line_runs(current_tokens)
+        bboxes = []
+        for run in line_runs:
+            run_bbox = run[0].bbox
+            for t in run[1:]:
+                run_bbox = run_bbox.union(t.bbox)
+            bboxes.append(run_bbox)
+
         sources = {t.source for t in current_tokens}
         source = sources.pop() if len(sources) == 1 else "mixed"
 
@@ -50,6 +88,7 @@ def merge_page_spans(page: PageTokens) -> list[EntitySpan]:
                 entity_type=entity_type,
                 text=" ".join(t.text for t in current_tokens),
                 bbox=bbox,
+                bboxes=tuple(bboxes),
                 page_num=page.page_num,
                 token_indices=tuple(t.token_index for t in current_tokens),
                 source=source,

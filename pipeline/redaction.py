@@ -70,19 +70,23 @@ def apply_redactions(
                 )
             page = doc[page_num]
             for span in page_spans:
-                rect = fitz.Rect(*span.bbox.as_tuple())
-                rect += (-padding, -padding, padding, padding)
-                if label_style:
-                    page.add_redact_annot(
-                        rect,
-                        text=f"[{span.entity_type}]",
-                        fill=fill_color,
-                        text_color=(1, 1, 1),
-                        fontsize=min(10, rect.height * 0.8),
-                    )
-                else:
-                    page.add_redact_annot(rect, fill=fill_color)
-                applied += 1
+                for i, box in enumerate(span.bboxes):
+                    rect = fitz.Rect(*box.as_tuple())
+                    rect += (-padding, -padding, padding, padding)
+                    # Only the first line-segment gets the "[TYPE]" label —
+                    # repeating it on every line of a wrapped multi-line
+                    # entity would be redundant and visually noisy.
+                    if label_style and i == 0:
+                        page.add_redact_annot(
+                            rect,
+                            text=f"[{span.entity_type}]",
+                            fill=fill_color,
+                            text_color=(1, 1, 1),
+                            fontsize=min(10, rect.height * 0.8),
+                        )
+                    else:
+                        page.add_redact_annot(rect, fill=fill_color)
+                    applied += 1
 
         # apply_redactions must be called per-page AFTER all annotations
         # on that page are added; calling it page-by-page inside the

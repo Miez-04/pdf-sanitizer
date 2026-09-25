@@ -50,7 +50,7 @@ from regex_engine.matcher import build_regex_mask_registry
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 
-DEFAULT_CHECKPOINT = "models/checkpoints_v13/best_model.pt"
+DEFAULT_CHECKPOINT = "models/checkpoints_v19/best_model.pt"
 
 # Whether the installed EntitySpan dataclass has a confidence field —
 # only true if the confidence-scoring pipeline patch has been applied.
@@ -199,6 +199,67 @@ def page_image(doc_id: str, page_num: int):
     return send_file(buf, mimetype="image/png")
 
 
+def _build_entity_span(tokens: list, entity_type: str, page_num: int, source: str) -> EntitySpan:
+    """Shared by mask_word and manual_select: given an ordered list of
+    tokens (already sorted by token_index — reading order), builds the
+    EntitySpan with correct per-line bboxes via the same splitting
+    logic pipeline.coordinate_merge.merge_page_spans uses for model/
+    regex-detected entities, so a manually-selected or custom-matched
+    span behaves identically to an auto-detected one everywhere
+    downstream (review UI, redaction)."""
+    bbox = tokens[0].bbox
+    for t in tokens[1:]:
+        bbox = bbox.union(t.bbox)
+    line_runs = _split_into_line_runs(tokens)
+    bboxes = []
+    for run in line_runs:
+        run_bbox = run[0].bbox
+        for t in run[1:]:
+            run_bbox = run_bbox.union(t.bbox)
+        bboxes.append(run_bbox)
+    span_kwargs = dict(
+        entity_type=entity_type,
+        text=" ".join(t.text for t in tokens),
+        bbox=bbox,
+        bboxes=tuple(bboxes),
+        page_num=page_num,
+        token_indices=tuple(t.token_index for t in tokens),
+        source=source,
+    )
+    if _ENTITY_SPAN_HAS_CONFIDENCE:
+        span_kwargs["confidence"] = 1.0
+    return EntitySpan(**span_kwargs)
+
+
+import re
+
+_LEADER_DECORATION_PATTERN = re.compile(r"^[.\-_·…]{2,}$")
+
+
+def _is_leader_decoration(text: str) -> bool:
+    """True for signature-line / form-field leader decorations like
+    '...................', '________', or '---' — tokens made up
+    entirely of repeated punctuation with no real content. These
+    should never end up inside a selected PERSON/NRIC/PHONE/ADDRESS
+    span even when a drag's rectangle geometrically covers them (a
+    drag over a name that sits right after a leader-dots run on the
+    same line will often graze the dots too)."""
+    return bool(_LEADER_DECORATION_PATTERN.match(text.strip()))
+
+
+def _bbox_center_inside(token_bbox, x0: float, y0: float, x1: float, y1: float) -> bool:
+    """A token counts as 'selected' only if its CENTER point falls
+    inside the drag rectangle — not merely any overlap. Plain overlap
+    was catching decorations like signature-line underscores or a
+    ruled line sitting just below the intended word, since those only
+    need to graze the edge of the drag box to match; requiring the
+    center point makes selection match what the user actually dragged
+    over, not what merely touches the box."""
+    cx = (token_bbox.x0 + token_bbox.x1) / 2
+    cy = (token_bbox.y0 + token_bbox.y1) / 2
+    return x0 <= cx <= x1 and y0 <= cy <= y1
+
+
 ALLOWED_MASK_TYPES = {"PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"}
 
 
@@ -236,33 +297,133 @@ def mask_word():
             if texts_lower[i:i + n] != phrase_words:
                 continue
             match_tokens = page.tokens[i:i + n]
-            bbox = match_tokens[0].bbox
-            for t in match_tokens[1:]:
-                bbox = bbox.union(t.bbox)
-            line_runs = _split_into_line_runs(match_tokens)
-            bboxes = []
-            for run in line_runs:
-                run_bbox = run[0].bbox
-                for t in run[1:]:
-                    run_bbox = run_bbox.union(t.bbox)
-                bboxes.append(run_bbox)
-            span_kwargs = dict(
-                entity_type=entity_type,
-                text=" ".join(t.text for t in match_tokens),
-                bbox=bbox,
-                bboxes=tuple(bboxes),
-                page_num=page.page_num,
-                token_indices=tuple(t.token_index for t in match_tokens),
-                source="manual",
-            )
-            if _ENTITY_SPAN_HAS_CONFIDENCE:
-                span_kwargs["confidence"] = 1.0
-            span = EntitySpan(**span_kwargs)
+            span = _build_entity_span(match_tokens, entity_type, page.page_num, source="manual")
             span_id = uuid.uuid4().hex
             entry["spans_by_id"][span_id] = span
             new_entities.append(_span_to_dict(span_id, span, line_no=0))
 
     return jsonify({"entities": new_entities})
+
+
+@app.route("/api/manual-select", methods=["POST"])
+def manual_select():
+    """Drag-to-select on the page image. The frontend sends the
+    dragged rectangle already converted to PDF-point coordinates
+    (using the same scale factors it uses to position overlays), not
+    raw screen pixels. Every token whose bbox overlaps that rectangle
+    is picked up, sorted into reading order, and built into one
+    EntitySpan the same way an auto-detected or mask-word entity is —
+    including the per-line split, so a selection dragged across
+    multiple lines becomes one attribute in the list but redacts as
+    separate per-line boxes, not one rectangle spanning the gap."""
+    data = request.get_json(force=True)
+    doc_id = data.get("doc_id")
+    page_num_1indexed = data.get("page")
+    entity_type = (data.get("entity_type") or "CUSTOM").strip().upper()
+    entry = DOCUMENTS.get(doc_id)
+    if entry is None:
+        return jsonify({"error": "Unknown doc_id"}), 404
+    if entity_type not in ALLOWED_MASK_TYPES:
+        return jsonify({"error": f"Invalid entity_type: {entity_type}"}), 400
+    try:
+        x0, y0, x1, y1 = (float(data[k]) for k in ("x0", "y0", "x1", "y1"))
+        page_num_1indexed = int(page_num_1indexed)
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "x0/y0/x1/y1/page must be numbers"}), 400
+    if x1 <= x0 or y1 <= y0:
+        return jsonify({"error": "Empty selection"}), 400
+
+    document = entry["document"]
+    page_num_0indexed = page_num_1indexed - 1
+    if not (0 <= page_num_0indexed < len(document.pages)):
+        return jsonify({"error": "page out of range"}), 400
+    page = document.pages[page_num_0indexed]
+
+    selected_tokens = sorted(
+        (t for t in page.tokens if _bbox_center_inside(t.bbox, x0, y0, x1, y1) and not _is_leader_decoration(t.text)),
+        key=lambda t: t.token_index,
+    )
+    if not selected_tokens:
+        return jsonify({"error": "No text found under that selection"}), 400
+
+    span = _build_entity_span(selected_tokens, entity_type, page.page_num, source="manual")
+    span_id = uuid.uuid4().hex
+    entry["spans_by_id"][span_id] = span
+    return jsonify({"entity": _span_to_dict(span_id, span, line_no=0)})
+
+
+@app.route("/api/entity/<doc_id>/<entity_id>", methods=["DELETE"])
+def delete_entity(doc_id: str, entity_id: str):
+    """Fully remove a manually-added (or auto-detected) entity from
+    the list — distinct from /api/toggle, which only excludes it from
+    the final redaction while keeping it visible/re-includable."""
+    entry = DOCUMENTS.get(doc_id)
+    if entry is None or entity_id not in entry["spans_by_id"]:
+        return jsonify({"error": "Unknown doc_id/entity_id"}), 404
+    del entry["spans_by_id"][entity_id]
+    entry["excluded_ids"].discard(entity_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/retag/<doc_id>/<entity_id>", methods=["POST"])
+def retag_entity(doc_id: str, entity_id: str):
+    """Change an existing entity's type in place (same id, same
+    tokens/bboxes) — e.g. the model tagged something as ADDRESS but it
+    was actually a PHONE."""
+    entry = DOCUMENTS.get(doc_id)
+    if entry is None or entity_id not in entry["spans_by_id"]:
+        return jsonify({"error": "Unknown doc_id/entity_id"}), 404
+    data = request.get_json(force=True)
+    new_type = (data.get("entity_type") or "").strip().upper()
+    if new_type not in ALLOWED_MASK_TYPES:
+        return jsonify({"error": f"Invalid entity_type: {new_type}"}), 400
+    old_span = entry["spans_by_id"][entity_id]
+    new_span = _dataclasses.replace(old_span, entity_type=new_type)
+    entry["spans_by_id"][entity_id] = new_span
+    return jsonify({"entity": _span_to_dict(entity_id, new_span, line_no=0)})
+
+
+@app.route("/api/reselect-entity", methods=["POST"])
+def reselect_entity():
+    """Completely REPLACES an existing entity's token set with a fresh
+    drag selection. Use this when the current highlight is wrong in
+    either direction: too big (grabbed extra text that isn't part of
+    the attribute) or too small. Keeps the same entity id (same list
+    row); entity_type can optionally change too."""
+    data = request.get_json(force=True)
+    doc_id = data.get("doc_id")
+    entity_id = data.get("entity_id")
+    entry = DOCUMENTS.get(doc_id)
+    if entry is None or entity_id not in entry["spans_by_id"]:
+        return jsonify({"error": "Unknown doc_id/entity_id"}), 404
+    try:
+        x0, y0, x1, y1 = (float(data[k]) for k in ("x0", "y0", "x1", "y1"))
+        page_num_1indexed = int(data["page"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "x0/y0/x1/y1/page must be numbers"}), 400
+
+    existing_span = entry["spans_by_id"][entity_id]
+    entity_type = (data.get("entity_type") or existing_span.entity_type).strip().upper()
+    if entity_type not in ALLOWED_MASK_TYPES:
+        return jsonify({"error": f"Invalid entity_type: {entity_type}"}), 400
+
+    document = entry["document"]
+    page_num_0indexed = page_num_1indexed - 1
+    if not (0 <= page_num_0indexed < len(document.pages)):
+        return jsonify({"error": "page out of range"}), 400
+    page = document.pages[page_num_0indexed]
+
+    new_tokens = sorted(
+        (t for t in page.tokens
+         if _bbox_center_inside(t.bbox, x0, y0, x1, y1) and not _is_leader_decoration(t.text)),
+        key=lambda t: t.token_index,
+    )
+    if not new_tokens:
+        return jsonify({"error": "No text found under that selection"}), 400
+
+    new_span = _build_entity_span(new_tokens, entity_type, page.page_num, source="manual")
+    entry["spans_by_id"][entity_id] = new_span  # same id -> replaces this row entirely, not merged
+    return jsonify({"entity": _span_to_dict(entity_id, new_span, line_no=0)})
 
 
 @app.route("/api/toggle/<doc_id>/<entity_id>", methods=["POST"])

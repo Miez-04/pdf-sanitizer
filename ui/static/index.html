@@ -157,6 +157,7 @@
     border-radius: 8px;
   }
   .entity-row:hover { background: var(--bg); }
+  .entity-row.flash { background: #fef9c3; transition: background 0.3s ease; }
   .entity-row .dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
   .entity-row .dot.PERSON { background: var(--person); }
   .entity-row .dot.NRIC { background: var(--nric); }
@@ -166,12 +167,15 @@
   .entity-row .info { flex: 1; min-width: 0; }
   .entity-row .text { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entity-row .meta { font-size: 11px; margin-top: 2px; }
-  .entity-row .meta .type { font-weight: 700; }
-  .entity-row .meta .type.PERSON { color: var(--person); }
-  .entity-row .meta .type.NRIC { color: var(--nric); }
-  .entity-row .meta .type.PHONE { color: var(--phone); }
-  .entity-row .meta .type.ADDRESS { color: var(--address); }
-  .entity-row .meta .type.CUSTOM { color: var(--custom); }
+  .entity-row .meta .type-select {
+    appearance: none; -webkit-appearance: none; border: none; background: transparent;
+    font: inherit; font-weight: 700; font-size: 11px; padding: 0; cursor: pointer;
+  }
+  .entity-row .meta .type-select.PERSON { color: var(--person); }
+  .entity-row .meta .type-select.NRIC { color: var(--nric); }
+  .entity-row .meta .type-select.PHONE { color: var(--phone); }
+  .entity-row .meta .type-select.ADDRESS { color: var(--address); }
+  .entity-row .meta .type-select.CUSTOM { color: var(--custom); }
   .entity-row .meta .loc { color: var(--text-muted); }
   .entity-row input[type=checkbox] { margin-top: 6px; }
 
@@ -184,6 +188,35 @@
     display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
     background: var(--text); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px; z-index: 100;
   }
+
+  .draw-toolbar { margin-bottom: 10px; align-self: flex-start; }
+  #draw-mode-btn.active { background: var(--purple); color: #fff; }
+
+  #drag-rect {
+    position: absolute; border: 2px dashed var(--purple); background: rgba(91,79,232,0.15);
+    display: none; pointer-events: none;
+  }
+  #type-popover {
+    position: absolute; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.15); z-index: 50;
+    display: none; gap: 6px; align-items: center;
+  }
+  #type-popover select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+  #type-popover button { padding: 6px 10px; font-weight: 700; font-size: 12px; border-radius: 6px; }
+  #type-popover .confirm { background: var(--purple); color: #fff; }
+  #type-popover .confirm:hover { background: var(--purple-dark); }
+  #type-popover .cancel { background: var(--bg); color: var(--text); }
+
+  .entity-row .delete-btn {
+    background: none; color: var(--text-muted); font-size: 14px; padding: 2px 6px;
+    border-radius: 6px; flex-shrink: 0; align-self: flex-start; margin-top: 4px;
+  }
+  .entity-row .delete-btn:hover { background: #fee2e2; color: var(--address); }
+  .entity-row .reselect-btn {
+    background: none; color: var(--text-muted); font-size: 14px; padding: 2px 6px;
+    border-radius: 6px; flex-shrink: 0; align-self: flex-start; margin-top: 4px;
+  }
+  .entity-row .reselect-btn:hover { background: var(--bg); color: var(--purple); }
 </style>
 </head>
 <body>
@@ -221,9 +254,24 @@
     <div class="sidebar" id="thumb-sidebar"></div>
 
     <div class="main-panel">
-      <div class="page-wrap">
+      <div class="draw-toolbar">
+        <button class="btn-secondary" id="draw-mode-btn" onclick="toggleDrawMode()">✎ Draw selection</button>
+      </div>
+      <div class="page-wrap" id="page-wrap">
         <img id="page-image" src="" alt="page">
         <div id="overlay-layer"></div>
+        <div id="drag-rect"></div>
+        <div id="type-popover">
+          <select id="popover-type">
+            <option value="PERSON">Person</option>
+            <option value="NRIC">NRIC</option>
+            <option value="PHONE">Phone</option>
+            <option value="ADDRESS">Address</option>
+            <option value="CUSTOM">Custom</option>
+          </select>
+          <button class="confirm" onclick="confirmManualSelect()">Add</button>
+          <button class="cancel" onclick="cancelManualSelect()">✕</button>
+        </div>
       </div>
       <!-- bottom pagination -->
       <div class="pager">
@@ -439,6 +487,7 @@ function renderEntityList() {
   filtered.forEach(e => {
     const row = document.createElement("div");
     row.className = "entity-row";
+    row.id = `row-${e.id}`;
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -456,20 +505,52 @@ function renderEntityList() {
     const textEl = document.createElement("div");
     textEl.className = "text";
     textEl.textContent = e.text;
+
     const metaEl = document.createElement("div");
     metaEl.className = "meta";
-    metaEl.innerHTML = `<span class="type ${e.type}">${e.type}</span> <span class="loc">· pg ${e.page}${e.line ? " · line " + e.line : ""}</span>`;
+
+    const typeSelect = document.createElement("select");
+    typeSelect.className = `type-select ${e.type}`;
+    ["PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"].forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t; opt.textContent = t;
+      if (t === e.type) opt.selected = true;
+      typeSelect.appendChild(opt);
+    });
+    typeSelect.onclick = (ev) => ev.stopPropagation();
+    typeSelect.onchange = (ev) => { ev.stopPropagation(); retagEntity(e.id, typeSelect.value); };
+
+    const locSpan = document.createElement("span");
+    locSpan.className = "loc";
+    locSpan.textContent = ` · pg ${e.page}${e.line ? " · line " + e.line : ""}`;
+
+    metaEl.appendChild(typeSelect);
+    metaEl.appendChild(locSpan);
     info.appendChild(textEl);
     info.appendChild(metaEl);
+
+    const reselectBtn = document.createElement("button");
+    reselectBtn.className = "reselect-btn";
+    reselectBtn.textContent = "⟲";
+    reselectBtn.title = "Redraw the correct selection — REPLACES the current highlight";
+    reselectBtn.onclick = (ev) => { ev.stopPropagation(); armReselect(e); };
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete-btn";
+    deleteBtn.textContent = "✕";
+    deleteBtn.title = "Remove this entity";
+    deleteBtn.onclick = (ev) => { ev.stopPropagation(); deleteEntity(e.id); };
 
     row.appendChild(checkbox);
     row.appendChild(dot);
     row.appendChild(info);
+    row.appendChild(reselectBtn);
+    row.appendChild(deleteBtn);
 
-    // Click anywhere on the row (not the checkbox) -> jump to that
-    // entity's page immediately and flash its overlay, per the request:
-    // "if i pressed at the words in the list it can show the pdf page
-    // right away."
+    // Click anywhere on the row (not the checkbox or delete button) ->
+    // jump to that entity's page immediately and flash its overlay, per
+    // the request: "if i pressed at the words in the list it can show
+    // the pdf page right away."
     row.onclick = () => jumpToEntity(e);
 
     list.appendChild(row);
@@ -477,6 +558,14 @@ function renderEntityList() {
 }
 
 function jumpToEntity(e) {
+  // If a type filter is currently hiding this entity's row, clear it
+  // first so the row actually exists in the list to scroll to.
+  if (activeFilter !== "all" && activeFilter !== e.type) {
+    activeFilter = "all";
+    buildPillFilters();
+    renderEntityList();
+  }
+
   const samePage = e.page === currentPage;
   goToPage(e.page);
   const flashIt = () => {
@@ -489,6 +578,16 @@ function jumpToEntity(e) {
   };
   if (samePage) flashIt();
   else setTimeout(flashIt, 250); // wait for the new page image to render
+
+  // Also jump the right-hand list to this entity's row and flash it —
+  // clicking a highlight on the page takes you straight to it in the
+  // list (to reselect/delete it) instead of having to scroll to find it.
+  const row = document.getElementById(`row-${e.id}`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("flash");
+    setTimeout(() => row.classList.remove("flash"), 1200);
+  }
 }
 
 function toggleEntity(id, include) {
@@ -507,6 +606,164 @@ function updateTotals() {
   document.getElementById("entities-sub").textContent = `${activeCount} items masked · review before download`;
   document.getElementById("total-masked").textContent = activeCount;
   document.getElementById("pages-processed").textContent = numPages;
+}
+
+// ---------------- Draw-your-own-selection ----------------
+let drawMode = false;
+let dragStart = null;
+let pendingSelection = null;
+let reselectTargetId = null; // set when the current drag should REPLACE an existing entity's tokens entirely
+
+function toggleDrawMode() {
+  drawMode = !drawMode;
+  reselectTargetId = null;
+  document.getElementById("draw-mode-btn").classList.toggle("active", drawMode);
+  document.getElementById("page-wrap").style.cursor = drawMode ? "crosshair" : "default";
+  cancelManualSelect();
+}
+
+function armReselect(entity) {
+  reselectTargetId = entity.id;
+  drawMode = true;
+  document.getElementById("draw-mode-btn").classList.add("active");
+  document.getElementById("page-wrap").style.cursor = "crosshair";
+  goToPage(entity.page);
+  showStatus(`Draw the correct selection for "${entity.text}" — it will REPLACE the current highlight.`, 4000);
+}
+
+const pageWrapEl = document.getElementById("page-wrap");
+
+pageWrapEl.addEventListener("mousedown", (e) => {
+  if (!drawMode) return;
+  if (e.target.closest("#type-popover")) return; // let the popover's own controls work
+  const rect = pageWrapEl.getBoundingClientRect();
+  dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const dragEl = document.getElementById("drag-rect");
+  Object.assign(dragEl.style, { left: dragStart.x + "px", top: dragStart.y + "px", width: "0px", height: "0px", display: "block" });
+  e.preventDefault();
+});
+
+pageWrapEl.addEventListener("mousemove", (e) => {
+  if (!drawMode || !dragStart) return;
+  if (e.target.closest("#type-popover")) return;
+  const rect = pageWrapEl.getBoundingClientRect();
+  const curX = e.clientX - rect.left, curY = e.clientY - rect.top;
+  const dragEl = document.getElementById("drag-rect");
+  Object.assign(dragEl.style, {
+    left: Math.min(dragStart.x, curX) + "px",
+    top: Math.min(dragStart.y, curY) + "px",
+    width: Math.abs(curX - dragStart.x) + "px",
+    height: Math.abs(curY - dragStart.y) + "px",
+  });
+});
+
+pageWrapEl.addEventListener("mouseup", (e) => {
+  if (!drawMode || !dragStart) return;
+  if (e.target.closest("#type-popover")) return;
+  const rect = pageWrapEl.getBoundingClientRect();
+  const curX = e.clientX - rect.left, curY = e.clientY - rect.top;
+  document.getElementById("drag-rect").style.display = "none";
+  const pxLeft = Math.min(dragStart.x, curX), pxTop = Math.min(dragStart.y, curY);
+  const pxW = Math.abs(curX - dragStart.x), pxH = Math.abs(curY - dragStart.y);
+  dragStart = null;
+  if (pxW < 4 || pxH < 4) return; // ignore accidental clicks/tiny drags
+
+  // Convert the dragged rectangle from on-screen pixels back to PDF
+  // points, using the same scale factors renderOverlays() uses in the
+  // other direction — this is what lets a multi-line drag get snapped
+  // to real text tokens server-side instead of redacting a raw pixel box.
+  const dims = pageDims[currentPage];
+  const img = document.getElementById("page-image");
+  const scaleX = img.clientWidth / dims.width;
+  const scaleY = img.clientHeight / dims.height;
+  const selection = {
+    x0: pxLeft / scaleX, y0: pxTop / scaleY,
+    x1: (pxLeft + pxW) / scaleX, y1: (pxTop + pxH) / scaleY,
+  };
+
+  if (reselectTargetId) {
+    const targetId = reselectTargetId;
+    reselectTargetId = null;
+    confirmReselect(targetId, selection);
+    return;
+  }
+
+  pendingSelection = selection;
+  const pop = document.getElementById("type-popover");
+  pop.style.left = (pxLeft + pxW) + "px";
+  pop.style.top = pxTop + "px";
+  pop.style.display = "flex";
+});
+
+function cancelManualSelect() {
+  pendingSelection = null;
+  document.getElementById("type-popover").style.display = "none";
+}
+
+async function confirmManualSelect() {
+  if (!pendingSelection || !docId) return;
+  const entityType = document.getElementById("popover-type").value;
+  const res = await fetch("/api/manual-select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ doc_id: docId, page: currentPage, entity_type: entityType, ...pendingSelection }),
+  });
+  const data = await res.json();
+  document.getElementById("type-popover").style.display = "none";
+  pendingSelection = null;
+  if (data.error) { showStatus(data.error, 3000); return; }
+  entities.push(data.entity);
+  buildPillFilters();
+  renderEntityList();
+  updateTotals();
+  renderOverlays();
+}
+
+async function confirmReselect(entityId, selection) {
+  const res = await fetch("/api/reselect-entity", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ doc_id: docId, entity_id: entityId, page: currentPage, ...selection }),
+  });
+  const data = await res.json();
+  drawMode = false;
+  document.getElementById("draw-mode-btn").classList.remove("active");
+  document.getElementById("page-wrap").style.cursor = "default";
+  if (data.error) { showStatus(data.error, 3000); return; }
+
+  const idx = entities.findIndex(e => e.id === entityId);
+  if (idx !== -1) entities[idx] = data.entity;
+  buildPillFilters();
+  renderEntityList();
+  updateTotals();
+  renderOverlays();
+  showStatus("Selection replaced.", 1500);
+}
+
+async function retagEntity(entityId, newType) {
+  const res = await fetch(`/api/retag/${docId}/${entityId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ entity_type: newType }),
+  });
+  const data = await res.json();
+  if (data.error) { showStatus(data.error, 3000); return; }
+  const idx = entities.findIndex(e => e.id === entityId);
+  if (idx !== -1) entities[idx] = data.entity;
+  buildPillFilters();
+  renderEntityList();
+  updateTotals();
+  renderOverlays();
+}
+
+async function deleteEntity(id) {
+  await fetch(`/api/entity/${docId}/${id}`, { method: "DELETE" });
+  entities = entities.filter(e => e.id !== id);
+  excludedIds.delete(id);
+  buildPillFilters();
+  renderEntityList();
+  updateTotals();
+  renderOverlays();
 }
 
 // ---------------- Mask your own words ----------------

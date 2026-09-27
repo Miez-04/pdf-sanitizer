@@ -40,6 +40,13 @@ class EntitySpan:
                                      # mask-word spans) without knowing about
                                      # per-line splitting — single-token/single-
                                      # line spans are correct either way.
+    confidence: float = 1.0   # min token confidence over the span — regex/
+                               # heuristic/manual tokens are always 1.0
+                               # (schema default), so this is really "the
+                               # model portion's weakest confidence" for a
+                               # mixed-source span. Surfaced to the review UI
+                               # so a reviewer can see how sure the model was,
+                               # not just what it guessed.
 
     def __post_init__(self):
         if not self.bboxes:
@@ -92,6 +99,7 @@ def merge_page_spans(page: PageTokens) -> list[EntitySpan]:
                 page_num=page.page_num,
                 token_indices=tuple(t.token_index for t in current_tokens),
                 source=source,
+                confidence=min(t.confidence for t in current_tokens),
             )
         )
 

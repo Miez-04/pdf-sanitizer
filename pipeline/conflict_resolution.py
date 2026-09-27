@@ -36,28 +36,98 @@ MODEL_SOURCE = "model"
 REGEX_SOURCE = "regex"
 HEURISTIC_SOURCE = "address_heuristic"
 
+# Minimum CRF marginal probability (see models.bilstm_crf.BiLSTMCRF.marginals
+# / pipeline.inference.TierTwoPredictor.predict_page_with_confidence) a
+# model-only PERSON/ADDRESS span must clear to survive into redaction.
+# NRIC/PHONE are excluded here: they have their own stricter, deterministic
+# plausibility check below (_reject_implausible_model_nric_phone) that a
+# probability threshold can't improve on. Restored after real-PDF testing
+# on an out-of-domain (non-Malaysian-PII) technical document showed the
+# model producing widespread low-confidence guesses — hardware terms,
+# part numbers, bare fragments — tagged as every entity type. A model
+# has no real basis for confidence on content this far outside its
+# training distribution, and this gate is what catches that regardless
+# of how much more Malaysian-PII training data gets added.
+MIN_MODEL_CONFIDENCE = 0.5
+
 
 def resolve_page(
     page: PageTokens,
     registry: RegexMaskRegistry,
     tier2_labels: list[str],
+    tier2_confidences: list[float] | None = None,
 ) -> None:
-    """Mutates page.tokens' label/source in place. Tokens already
-    labelled by regex_engine.matcher (source == "regex") are left
-    untouched — that IS the "Tier 1 wins" rule, already applied at
-    match time. Every other token gets its Tier 2 prediction."""
+    """Mutates page.tokens' label/source/confidence in place. Tokens
+    already labelled by regex_engine.matcher (source == "regex") are
+    left untouched — that IS the "Tier 1 wins" rule, already applied at
+    match time. Every other token gets its Tier 2 prediction.
+
+    tier2_confidences is optional (defaults to 1.0/token) only so
+    existing callers/tests that predate confidence scoring don't
+    break — pipeline.run.sanitize_pdf should always pass real
+    confidences now. Passing None disables
+    _reject_low_confidence_model_predictions since there is nothing
+    meaningful to threshold."""
     assert len(tier2_labels) == len(page.tokens), (
         f"tier2_labels length {len(tier2_labels)} != token count "
         f"{len(page.tokens)} for page {page.page_num}"
     )
+    if tier2_confidences is None:
+        tier2_confidences = [1.0] * len(page.tokens)
+    assert len(tier2_confidences) == len(page.tokens), (
+        f"tier2_confidences length {len(tier2_confidences)} != token count "
+        f"{len(page.tokens)} for page {page.page_num}"
+    )
 
-    for token, predicted_label in zip(page.tokens, tier2_labels):
+    for token, predicted_label, confidence in zip(
+        page.tokens, tier2_labels, tier2_confidences
+    ):
         if (page.page_num, token.token_index) in registry:
             continue  # Tier 1 already claimed this token; do not overwrite
         token.label = predicted_label
         token.source = MODEL_SOURCE
+        token.confidence = confidence
 
     _reject_implausible_model_nric_phone(page)
+    _reject_low_confidence_model_predictions(page)
+    repair_iob2(page)
+    _fill_address_gaps_with_heuristic(page)
+
+
+def _reject_low_confidence_model_predictions(
+    page: PageTokens, min_confidence: float = MIN_MODEL_CONFIDENCE
+) -> int:
+    """Downgrades model-only PERSON/ADDRESS spans whose MINIMUM
+    per-token confidence (weakest link in the span — one uncertain
+    token is enough to make the whole span's boundary untrustworthy)
+    falls below min_confidence. Restricted to PERSON/ADDRESS: NRIC/
+    PHONE already have a stronger, format-based check that doesn't
+    need this."""
+    downgraded = 0
+    i = 0
+    n = len(page.tokens)
+    while i < n:
+        token = page.tokens[i]
+        entity = token.label[2:] if token.label.startswith("B-") else None
+        if token.source == MODEL_SOURCE and entity in ("PERSON", "ADDRESS"):
+            span = [token]
+            j = i + 1
+            while (
+                j < n
+                and page.tokens[j].source == MODEL_SOURCE
+                and page.tokens[j].label == f"I-{entity}"
+            ):
+                span.append(page.tokens[j])
+                j += 1
+
+            if min(t.confidence for t in span) < min_confidence:
+                for t in span:
+                    t.label = "O"
+                downgraded += len(span)
+            i = j
+        else:
+            i += 1
+    return downgraded
     repair_iob2(page)
     _fill_address_gaps_with_heuristic(page)
 
@@ -129,53 +199,62 @@ def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:
 
 
 def _reject_implausible_model_nric_phone(page: PageTokens) -> int:
-    """Cross-checks the model's OWN NRIC/PHONE predictions (tokens
-    Tier 1 didn't independently claim) against Tier 1's own format
-    rules, downgrading implausible ones to "O".
+    """Cross-checks NRIC/PHONE spans that include AT LEAST ONE
+    model-predicted token against Tier 1's own format rules,
+    downgrading the model-sourced tokens to "O" if the full span text
+    fails plausibility.
 
-    Rationale: Tier 1's regex is comprehensive for NRIC/PHONE
-    (including flexible-separator phone matching), so a model-only
-    NRIC/PHONE guess that fails Tier 1's own plausibility check is far
-    more likely a false positive on an unrelated digit-heavy token
-    (student IDs, course codes, reference numbers — confirmed via real
-    test PDFs where e.g. a 10-digit matric number got mis-tagged) than
-    a genuine number Tier 1 somehow missed. The model brings real,
-    complementary value for PERSON/ADDRESS, where no such deterministic
-    check exists — this filter is specific to NRIC/PHONE, where one
-    does. Downgrades the WHOLE contiguous model-predicted span at once
-    (not token-by-token) so a multi-token span isn't left partially
-    mangled. Returns the number of tokens downgraded."""
+    Checks every such span regardless of which token started it — not
+    just spans where the FIRST token happens to be model-sourced.
+    Found necessary: a span can start with a genuine Tier 1 regex
+    match and then have the model tack on extra I-X continuation
+    tokens (unrelated nearby digits/fragments) that were never
+    independently verified — the original narrower check missed this
+    entirely, since it only ever looked at spans STARTING at a
+    model-sourced token.
+
+    Only the model-sourced tokens within a failing span are downgraded
+    — a regex-matched token is Tier 1 ground truth and stays labelled
+    even if the model corrupted the span by extending it with
+    implausible continuation; repair_iob2() (run right after this)
+    cleans up whatever dangling I-X labels that leaves behind.
+
+    Rationale: Tier 1's regex is comprehensive for NRIC/PHONE, so a
+    span that fails Tier 1's own plausibility check is far more likely
+    a false positive on unrelated digit-heavy content (student IDs,
+    course codes, part numbers, years — confirmed via real test PDFs)
+    than a genuine number Tier 1 somehow missed. Returns the number of
+    tokens downgraded."""
     downgraded = 0
     i = 0
     n = len(page.tokens)
     while i < n:
         token = page.tokens[i]
         entity = token.label[2:] if token.label.startswith("B-") else None
-        if token.source == MODEL_SOURCE and entity in ("NRIC", "PHONE"):
+        if entity in ("NRIC", "PHONE"):
             span = [token]
             j = i + 1
-            while (
-                j < n
-                and page.tokens[j].source == MODEL_SOURCE
-                and page.tokens[j].label == f"I-{entity}"
-            ):
+            while j < n and page.tokens[j].label == f"I-{entity}":
                 span.append(page.tokens[j])
                 j += 1
 
-            span_text = " ".join(t.text for t in span)
-            if entity == "NRIC":
-                m = NRIC_PATTERN.search(span_text)
-                plausible = bool(m and is_plausible_nric(m))
-            else:
-                plausible = any(
-                    (m := pattern.search(span_text)) and is_plausible_phone(m)
-                    for pattern in PHONE_PATTERNS
-                )
+            has_model_token = any(t.source == MODEL_SOURCE for t in span)
+            if has_model_token:
+                span_text = " ".join(t.text for t in span)
+                if entity == "NRIC":
+                    m = NRIC_PATTERN.fullmatch(span_text)
+                    plausible = bool(m and is_plausible_nric(m))
+                else:
+                    plausible = any(
+                        (m := pattern.fullmatch(span_text)) and is_plausible_phone(m)
+                        for pattern in PHONE_PATTERNS
+                    )
 
-            if not plausible:
-                for t in span:
-                    t.label = "O"
-                downgraded += len(span)
+                if not plausible:
+                    for t in span:
+                        if t.source == MODEL_SOURCE:
+                            t.label = "O"
+                            downgraded += 1
             i = j
         else:
             i += 1
@@ -208,6 +287,11 @@ def resolve_document(
     document: DocumentTokens,
     registry: RegexMaskRegistry,
     tier2_labels_by_page: list[list[str]],
+    tier2_confidences_by_page: list[list[float]] | None = None,
 ) -> None:
-    for page, tier2_labels in zip(document.pages, tier2_labels_by_page):
-        resolve_page(page, registry, tier2_labels)
+    if tier2_confidences_by_page is None:
+        tier2_confidences_by_page = [None] * len(document.pages)  # type: ignore[list-item]
+    for page, tier2_labels, tier2_confidences in zip(
+        document.pages, tier2_labels_by_page, tier2_confidences_by_page
+    ):
+        resolve_page(page, registry, tier2_labels, tier2_confidences)

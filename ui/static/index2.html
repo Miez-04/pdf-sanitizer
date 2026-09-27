@@ -17,7 +17,7 @@
     --nric: #2563eb;
     --phone: #7c3aed;
     --address: #dc2626;
-    --other: #d97706;
+    --custom: #d97706;
   }
   * { box-sizing: border-box; }
   body {
@@ -89,7 +89,7 @@
   .entity-pill-overlay:hover { filter: brightness(0.92); }
   .entity-pill-overlay.flash { outline: 3px solid #facc15; outline-offset: 1px; }
   .entity-pill-overlay .tag-label {
-    position: absolute; top: -13px; left: -2px; color: #fff;
+    position: absolute; top: -13px; right: -2px; color: #fff;
     font-size: 8px; font-weight: 800; line-height: 1.3;
     padding: 1px 4px; border-radius: 3px; white-space: nowrap;
   }
@@ -97,7 +97,7 @@
   .type-NRIC .tag-label    { background: var(--nric); }
   .type-PHONE .tag-label   { background: var(--phone); }
   .type-ADDRESS .tag-label { background: var(--address); }
-  .type-OTHER .tag-label  { background: var(--other); }
+  .type-CUSTOM .tag-label  { background: var(--custom); }
   .color-legend { display: flex; gap: 14px; margin-bottom: 10px; align-self: flex-start; flex-wrap: wrap; }
   .color-legend .item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); }
   .color-legend .swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -105,7 +105,7 @@
   .type-NRIC    { background: rgba(37,99,235,0.30);  border-color: var(--nric);    color: var(--nric); }
   .type-PHONE   { background: rgba(124,58,237,0.30); border-color: var(--phone);   color: var(--phone); }
   .type-ADDRESS { background: rgba(220,38,38,0.30);  border-color: var(--address); color: var(--address); }
-  .type-OTHER  { background: rgba(217,119,6,0.30);  border-color: var(--other);  color: var(--other); }
+  .type-CUSTOM  { background: rgba(217,119,6,0.30);  border-color: var(--custom);  color: var(--custom); }
 
   .pager {
     display: flex; align-items: center; gap: 16px; margin-top: 16px;
@@ -115,7 +115,7 @@
   .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
   .pager span { font-size: 14px; color: var(--text-muted); min-width: 90px; text-align: center; }
 
-  .right-panel { width: 340px; background: #fff; border-radius: 14px; padding: 20px; display: flex; flex-direction: column;margin-top: 73px}
+  .right-panel { width: 340px; background: #fff; border-radius: 14px; padding: 20px; display: flex; flex-direction: column; }
   .right-panel h3 { margin: 0 0 2px; font-size: 16px; }
   .right-panel .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
 
@@ -126,7 +126,7 @@
   .pill.NRIC { background: #eff6ff; color: var(--nric); }
   .pill.PHONE { background: #f5f3ff; color: var(--phone); }
   .pill.ADDRESS { background: #fef2f2; color: var(--address); }
-  .pill.OTHER { background: #fffbeb; color: var(--other); }
+  .pill.CUSTOM { background: #fffbeb; color: var(--custom); }
   .pill.active-filter { border-color: currentColor; }
 
   .mask-own { margin-bottom: 16px; }
@@ -165,7 +165,7 @@
   .entity-row .dot.NRIC { background: var(--nric); }
   .entity-row .dot.PHONE { background: var(--phone); }
   .entity-row .dot.ADDRESS { background: var(--address); }
-  .entity-row .dot.OTHER { background: var(--other); }
+  .entity-row .dot.CUSTOM { background: var(--custom); }
   .entity-row .info { flex: 1; min-width: 0; }
   .entity-row .text { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .entity-row .meta { font-size: 11px; margin-top: 2px; }
@@ -177,7 +177,7 @@
   .entity-row .meta .type-select.NRIC { color: var(--nric); }
   .entity-row .meta .type-select.PHONE { color: var(--phone); }
   .entity-row .meta .type-select.ADDRESS { color: var(--address); }
-  .entity-row .meta .type-select.OTHER { color: var(--other); }
+  .entity-row .meta .type-select.CUSTOM { color: var(--custom); }
   .entity-row .meta .loc { color: var(--text-muted); }
   .entity-row input[type=checkbox] { margin-top: 6px; }
 
@@ -259,6 +259,13 @@
       <div class="draw-toolbar">
         <button class="btn-secondary" id="draw-mode-btn" onclick="toggleDrawMode()">✎ Draw selection</button>
       </div>
+      <div class="color-legend">
+        <span class="item"><span class="swatch" style="background:var(--person)"></span>Person</span>
+        <span class="item"><span class="swatch" style="background:var(--nric)"></span>NRIC</span>
+        <span class="item"><span class="swatch" style="background:var(--phone)"></span>Phone</span>
+        <span class="item"><span class="swatch" style="background:var(--address)"></span>Address</span>
+        <span class="item"><span class="swatch" style="background:var(--custom)"></span>Custom</span>
+      </div>
       <div class="page-wrap" id="page-wrap">
         <img id="page-image" src="" alt="page">
         <div id="overlay-layer"></div>
@@ -269,7 +276,7 @@
             <option value="NRIC">NRIC</option>
             <option value="PHONE">Phone</option>
             <option value="ADDRESS">Address</option>
-            <option value="OTHER">Other</option>
+            <option value="CUSTOM">Custom</option>
           </select>
           <button class="confirm" onclick="confirmManualSelect()">Add</button>
           <button class="cancel" onclick="cancelManualSelect()">✕</button>
@@ -299,7 +306,6 @@
             <option value="NRIC">NRIC</option>
             <option value="PHONE">Phone</option>
             <option value="ADDRESS">Address</option>
-            <option value="OTHER">Other</option>  
           </select>
         </div>
         <button class="mask-own-add" onclick="addOwnWord()">Add word</button>
@@ -319,8 +325,8 @@
 </div>
 
 <script>
-const ENTITY_TYPES = ["PERSON", "NRIC", "PHONE", "ADDRESS", "OTHER"];
-const TYPE_ABBREV = { PERSON: "PERSON", NRIC: "NRIC", PHONE: "PHONE", ADDRESS: "ADDRESS", OTHER: "OTHER" };
+const ENTITY_TYPES = ["PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"];
+const TYPE_ABBREV = { PERSON: "PER", NRIC: "NRIC", PHONE: "TEL", ADDRESS: "ADDR", CUSTOM: "CUS" };
 
 let docId = null;
 let numPages = 1;
@@ -459,7 +465,7 @@ function renderOverlays() {
 
 // ---------------- Right panel: filters + list ----------------
 function buildPillFilters() {
-  const counts = { PERSON: 0, NRIC: 0, PHONE: 0, ADDRESS: 0, OTHER: 0 };
+  const counts = { PERSON: 0, NRIC: 0, PHONE: 0, ADDRESS: 0, CUSTOM: 0 };
   entities.forEach(e => { if (counts[e.type] !== undefined) counts[e.type]++; });
   const container = document.getElementById("pill-filters");
   container.innerHTML = "";
@@ -513,7 +519,7 @@ function renderEntityList() {
 
     const typeSelect = document.createElement("select");
     typeSelect.className = `type-select ${e.type}`;
-    ["PERSON", "NRIC", "PHONE", "ADDRESS", "OTHER"].forEach(t => {
+    ["PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"].forEach(t => {
       const opt = document.createElement("option");
       opt.value = t; opt.textContent = t;
       if (t === e.type) opt.selected = true;
@@ -524,22 +530,9 @@ function renderEntityList() {
 
     const locSpan = document.createElement("span");
     locSpan.className = "loc";
-
-    // Show which detection engine produced the highlight, and the
-    // confidence percentage when the engine is a model.
-    // Example: PERSON · pg 1 · line 1 · model (100%)
-    const sourceLabel = {
-      regex: "regex",
-      model: "model",
-      address_heuristic: "heuristic",
-      manual: "manual",
-      mixed: "mixed"
-    }[e.source] || e.source || "unknown";
-
+    const sourceLabel = { regex: "regex", model: "model", address_heuristic: "heuristic", manual: "manual", mixed: "mixed" }[e.source] || e.source;
     const confidenceNote = (e.source === "model" || e.source === "mixed") && e.confidence != null
-      ? ` (${Math.round(e.confidence * 100)}%)`
-      : "";
-
+      ? ` (${Math.round(e.confidence * 100)}%)` : "";
     locSpan.textContent = ` · pg ${e.page}${e.line ? " · line " + e.line : ""} · ${sourceLabel}${confidenceNote}`;
 
     metaEl.appendChild(typeSelect);

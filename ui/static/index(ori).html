@@ -524,23 +524,7 @@ function renderEntityList() {
 
     const locSpan = document.createElement("span");
     locSpan.className = "loc";
-
-    // Show which detection engine produced the highlight, and the
-    // confidence percentage when the engine is a model.
-    // Example: PERSON · pg 1 · line 1 · model (100%)
-    const sourceLabel = {
-      regex: "regex",
-      model: "model",
-      address_heuristic: "heuristic",
-      manual: "manual",
-      mixed: "mixed"
-    }[e.source] || e.source || "unknown";
-
-    const confidenceNote = (e.source === "model" || e.source === "mixed") && e.confidence != null
-      ? ` (${Math.round(e.confidence * 100)}%)`
-      : "";
-
-    locSpan.textContent = ` · pg ${e.page}${e.line ? " · line " + e.line : ""} · ${sourceLabel}${confidenceNote}`;
+    locSpan.textContent = ` · pg ${e.page}${e.line ? " · line " + e.line : ""}`;
 
     metaEl.appendChild(typeSelect);
     metaEl.appendChild(locSpan);

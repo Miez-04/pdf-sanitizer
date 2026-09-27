@@ -1,7 +1,7 @@
 """
 ui/server.py
 
-Flask backend for the custom PDF Sanitizer review UI (replaces the
+Flask backend for the other PDF Sanitizer review UI (replaces the
 Streamlit ui/app.py — see README.md's own note under requirements.txt:
 "UI (HITL workspace) — swap for Flask+React later if needed").
 
@@ -50,7 +50,7 @@ from regex_engine.matcher import build_regex_mask_registry
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 
-DEFAULT_CHECKPOINT = "models/checkpoints_v19/best_model.pt"
+DEFAULT_CHECKPOINT = "models/checkpoints_v21/best_model.pt"
 
 # Whether the installed EntitySpan dataclass has a confidence field —
 # only true if the confidence-scoring pipeline patch has been applied.
@@ -204,7 +204,7 @@ def _build_entity_span(tokens: list, entity_type: str, page_num: int, source: st
     tokens (already sorted by token_index — reading order), builds the
     EntitySpan with correct per-line bboxes via the same splitting
     logic pipeline.coordinate_merge.merge_page_spans uses for model/
-    regex-detected entities, so a manually-selected or custom-matched
+    regex-detected entities, so a manually-selected or other-matched
     span behaves identically to an auto-detected one everywhere
     downstream (review UI, redaction)."""
     bbox = tokens[0].bbox
@@ -260,7 +260,7 @@ def _bbox_center_inside(token_bbox, x0: float, y0: float, x1: float, y1: float) 
     return x0 <= cx <= x1 and y0 <= cy <= y1
 
 
-ALLOWED_MASK_TYPES = {"PERSON", "NRIC", "PHONE", "ADDRESS", "CUSTOM"}
+ALLOWED_MASK_TYPES = {"PERSON", "NRIC", "PHONE", "ADDRESS", "OTHER"}
 
 
 @app.route("/api/mask-word", methods=["POST"])
@@ -271,12 +271,12 @@ def mask_word():
     re-ingestion), so bboxes line up with what's already on screen.
     entity_type lets the caller tag the match as one of the real
     PERSON/NRIC/PHONE/ADDRESS types (so it merges into the existing
-    filter pills/counts) rather than always being a separate CUSTOM
-    bucket; defaults to CUSTOM only if omitted."""
+    filter pills/counts) rather than always being a separate OTHER
+    bucket; defaults to OTHER only if omitted."""
     data = request.get_json(force=True)
     doc_id = data.get("doc_id")
     phrase = (data.get("phrase") or "").strip()
-    entity_type = (data.get("entity_type") or "CUSTOM").strip().upper()
+    entity_type = (data.get("entity_type") or "OTHER").strip().upper()
     entry = DOCUMENTS.get(doc_id)
     if entry is None:
         return jsonify({"error": "Unknown doc_id"}), 404
@@ -319,7 +319,7 @@ def manual_select():
     data = request.get_json(force=True)
     doc_id = data.get("doc_id")
     page_num_1indexed = data.get("page")
-    entity_type = (data.get("entity_type") or "CUSTOM").strip().upper()
+    entity_type = (data.get("entity_type") or "OTHER").strip().upper()
     entry = DOCUMENTS.get(doc_id)
     if entry is None:
         return jsonify({"error": "Unknown doc_id"}), 404

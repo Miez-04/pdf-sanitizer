@@ -49,8 +49,12 @@ def sanitize_pdf(
     document = PDFIngestor().extract(source_pdf_path)
 
     registry = build_regex_mask_registry(document)
-    tier2_labels_by_page = predictor.predict_document(document)
-    resolve_document(document, registry, tier2_labels_by_page)
+    tier2_labels_by_page, tier2_confidences_by_page = (
+        predictor.predict_document_with_confidence(document)
+    )
+    resolve_document(
+        document, registry, tier2_labels_by_page, tier2_confidences_by_page
+    )
 
     spans = merge_document_spans(document)
 

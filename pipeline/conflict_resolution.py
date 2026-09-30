@@ -79,16 +79,35 @@ def resolve_page(
         f"{len(page.tokens)} for page {page.page_num}"
     )
 
+    # NRIC/PHONE are regex-only by explicit decision — Tier 1's patterns
+    # are comprehensive and already format-validated
+    # (is_plausible_nric/is_plausible_phone in regex_engine.patterns),
+    # so a model guess for these two types is never a genuine catch,
+    # only a way to introduce a false positive the deterministic rules
+    # would have rejected anyway. Discarded outright here (kept "O"),
+    # not merely downgraded after the fact — the model is never even
+    # allowed to claim these two labels for a token Tier 1 didn't
+    # already claim itself.
+    MODEL_VETOED_ENTITIES = {"NRIC", "PHONE"}
+
     for token, predicted_label, confidence in zip(
         page.tokens, tier2_labels, tier2_confidences
     ):
         if (page.page_num, token.token_index) in registry:
             continue  # Tier 1 already claimed this token; do not overwrite
+        entity = predicted_label[2:] if predicted_label.startswith(("B-", "I-")) else None
+        if entity in MODEL_VETOED_ENTITIES:
+            continue  # discard the model's guess; token stays "O" (schema default)
         token.label = predicted_label
         token.source = MODEL_SOURCE
         token.confidence = confidence
 
-    _reject_implausible_model_nric_phone(page)
+    _reject_implausible_model_nric_phone(page)  # defensive no-op now for
+                                                  # NRIC/PHONE (no model-
+                                                  # sourced tokens of those
+                                                  # types can exist), left
+                                                  # in place in case that
+                                                  # decision is ever revisited
     _reject_low_confidence_model_predictions(page)
     repair_iob2(page)
     _fill_address_gaps_with_heuristic(page)

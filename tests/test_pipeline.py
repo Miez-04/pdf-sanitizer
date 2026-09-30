@@ -114,11 +114,13 @@ def test_resolve_page_rejects_implausible_model_only_nric():
     assert page.tokens[0].label == "O"  # rejected — fails NRIC's dash-format check
 
 
-def test_resolve_page_keeps_plausible_model_only_phone():
-    """The rejection filter must not throw out a GENUINE phone number
-    just because Tier 1 happened not to independently flag it (e.g. if
-    Tier 1's own patterns somehow missed a valid format) — only
-    implausible ones get downgraded."""
+def test_resolve_page_discards_model_only_phone_even_if_plausible():
+    """NRIC/PHONE are regex-only by explicit decision — a model-only
+    prediction is discarded even when it happens to look like a
+    genuinely valid phone number. Tier 1's patterns are comprehensive
+    enough that there's no case where the model should be trusted to
+    catch one Tier 1 missed; letting it try only risks the false
+    positives real-PDF testing kept finding."""
     page = PageTokens(page_num=0, page_width=600, page_height=800)
     page.tokens = [
         _mk_token(0, "012-3456789", "O"),  # a genuinely valid mobile number
@@ -127,7 +129,7 @@ def test_resolve_page_keeps_plausible_model_only_phone():
     tier2_labels = ["B-PHONE"]
     resolve_page(page, registry, tier2_labels)
 
-    assert page.tokens[0].label == "B-PHONE"  # kept — passes Tier 1's own phone check
+    assert page.tokens[0].label == "O"  # discarded — model is never trusted for PHONE
 
 
 # ---------------------------------------------------------------------

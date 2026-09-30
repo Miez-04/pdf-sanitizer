@@ -70,6 +70,24 @@ class PDFIngestor:
                 )
         return doc
 
+    # Zero-width/invisible Unicode characters that Google Docs' PDF
+    # export (and some other tools) silently attach to words — e.g.
+    # "Jauhari\u200b", "1.\u200b". Confirmed on a real exported PDF:
+    # 2.1% of ALL word tokens carried one of these. They render as
+    # nothing on the page, but Token.text keeps them verbatim, so the
+    # model's vocabulary lookup (models/vocab.py does token.lower()
+    # keyed lookup) treats "Jauhari" and "Jauhari\u200b" as two
+    # different tokens — the contaminated one is silently
+    # out-of-vocabulary regardless of how well-trained the model is on
+    # the clean version of that exact word. Since the BiLSTM's hidden
+    # state flows through the whole sequence, one corrupted token can
+    # degrade the model's confidence on its NEIGHBORS too, not just
+    # itself. Stripped here, at extraction, so every token downstream
+    # (model input, redaction geometry, everything) sees clean text —
+    # redaction itself is unaffected either way since it operates on
+    # bbox geometry, not string matching.
+    _INVISIBLE_CHARS = str.maketrans("", "", "\u200b\u200c\u200d\ufeff\u2060")
+
     def _extract_page(self, page: fitz.Page) -> PageTokens:
         words = page.get_text("words")  # list of (x0,y0,x1,y1,text,block,line,word)
 
@@ -85,6 +103,7 @@ class PDFIngestor:
         for idx, (x0, y0, x1, y1, text, block_no, line_no, word_no) in enumerate(
             words
         ):
+            text = text.translate(self._INVISIBLE_CHARS)
             if len(text.strip()) < self.min_word_len:
                 continue
 

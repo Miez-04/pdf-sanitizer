@@ -95,6 +95,40 @@ def test_resolve_page_regex_wins_over_model():
     assert page.tokens[1].source == "model"
 
 
+def test_resolve_page_rejects_implausible_model_only_address():
+    """Regression test: ADDRESS F1 stayed stuck at exactly 0.6000 across
+    four corpus iterations (v19-v22) because the model kept tagging
+    bare numbers (financial figures, course codes) as ADDRESS with no
+    postcode, state, or street-anchor keyword anywhere in the span — a
+    real Malaysian address always has at least one. Mirrors the
+    existing NRIC/PHONE plausibility check."""
+    page = PageTokens(page_num=0, page_width=600, page_height=800)
+    page.tokens = [_mk_token(0, "2,700,000", "O")]  # a bare figure, NOT an address
+    registry = type("R", (), {"__contains__": lambda self, k: False})()
+    tier2_labels = ["B-ADDRESS"]
+    resolve_page(page, registry, tier2_labels)
+
+    assert page.tokens[0].label == "O"  # rejected — no postcode/state/anchor anywhere
+
+
+def test_resolve_page_keeps_plausible_model_only_address():
+    """The ADDRESS plausibility gate must not throw out a genuine
+    address just because Tier 1/the heuristic didn't independently
+    flag it — only spans with no postcode, state, or anchor keyword
+    anywhere get rejected."""
+    page = PageTokens(page_num=0, page_width=600, page_height=800)
+    page.tokens = [
+        _mk_token(0, "Jalan", "O"),
+        _mk_token(1, "Tun", "O"),
+        _mk_token(2, "Razak", "O"),
+    ]
+    registry = type("R", (), {"__contains__": lambda self, k: False})()
+    tier2_labels = ["B-ADDRESS", "I-ADDRESS", "I-ADDRESS"]
+    resolve_page(page, registry, tier2_labels)
+
+    assert all(t.label.endswith("ADDRESS") for t in page.tokens)  # kept — "Jalan" is an anchor keyword
+
+
 def test_resolve_page_rejects_implausible_model_only_nric():
     """Regression test for a real finding: the model sometimes tags an
     unrelated digit-heavy token (student ID, course code) as NRIC/PHONE

@@ -50,7 +50,7 @@ from regex_engine.matcher import build_regex_mask_registry
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 
-DEFAULT_CHECKPOINT = "models/checkpoints_v21/best_model.pt"
+DEFAULT_CHECKPOINT = "models/checkpoints_v22/best_model.pt"
 
 # Whether the installed EntitySpan dataclass has a confidence field —
 # only true if the confidence-scoring pipeline patch has been applied.

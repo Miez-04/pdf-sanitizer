@@ -25,6 +25,11 @@ from __future__ import annotations
 from pdf_ingestion.schema import DocumentTokens, PageTokens
 from regex_engine.address_heuristic import find_address_spans
 from regex_engine.matcher import RegexMaskRegistry
+from regex_engine.address_heuristic import (
+    ADDRESS_ANCHOR_KEYWORDS,
+    _STATE_TOKENS,
+    _is_plausible_postcode,
+)
 from regex_engine.patterns import (
     NRIC_PATTERN,
     PHONE_PATTERNS,
@@ -102,6 +107,7 @@ def resolve_page(
         token.source = MODEL_SOURCE
         token.confidence = confidence
 
+    _reject_implausible_model_address(page)
     _reject_implausible_model_nric_phone(page)  # defensive no-op now for
                                                   # NRIC/PHONE (no model-
                                                   # sourced tokens of those
@@ -215,6 +221,66 @@ def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:
             page.tokens[end_idx].label = "I-ADDRESS"
 
     return filled
+
+
+def _reject_implausible_model_address(page: PageTokens) -> int:
+    """Cross-checks model-predicted ADDRESS spans against the SAME
+    structural definition of a real Malaysian address that
+    regex_engine.address_heuristic already uses to independently FIND
+    addresses: a plausible postcode (5 digits, 1000-98999), a
+    recognized state/federal-territory name, or a street/building-type
+    anchor keyword (jalan, lot, taman, pangsapuri, ...).
+
+    Added after ADDRESS F1 on the adversarial eval stayed stuck at
+    exactly 0.6000 across four corpus iterations (v19-v22) despite
+    different training-data strategies each time — a strong signal the
+    model needed a deterministic structural check, the same lever that
+    already worked for NRIC/PHONE, rather than more training data.
+    Directly targets the reported failure: the model tagging bare
+    numbers as ADDRESS with no postcode, city, or state anywhere in
+    sight — something a real Malaysian address always has at least one
+    of, per the same structural definition address_heuristic.py's own
+    FINDER already relies on.
+
+    Only downgrades MODEL-sourced tokens within a failing span —
+    tokens from address_heuristic itself are address_heuristic-sourced
+    and always satisfy this check anyway by construction (they're
+    found FROM a postcode/anchor in the first place), so this adds a
+    check only where one was missing, without duplicating work HITL
+    already does downstream in the UI.
+    """
+    downgraded = 0
+    i = 0
+    n = len(page.tokens)
+    while i < n:
+        token = page.tokens[i]
+        entity = token.label[2:] if token.label.startswith("B-") else None
+        if entity == "ADDRESS":
+            span = [token]
+            j = i + 1
+            while j < n and page.tokens[j].label == "I-ADDRESS":
+                span.append(page.tokens[j])
+                j += 1
+
+            has_model_token = any(t.source == MODEL_SOURCE for t in span)
+            if has_model_token:
+                has_postcode = any(_is_plausible_postcode(t.text) for t in span)
+                has_state = any(t.text.lower() in _STATE_TOKENS for t in span)
+                has_anchor = any(
+                    t.text.lower().rstrip(".,") in ADDRESS_ANCHOR_KEYWORDS
+                    for t in span
+                )
+                plausible = has_postcode or has_state or has_anchor
+
+                if not plausible:
+                    for t in span:
+                        if t.source == MODEL_SOURCE:
+                            t.label = "O"
+                            downgraded += 1
+            i = j
+        else:
+            i += 1
+    return downgraded
 
 
 def _reject_implausible_model_nric_phone(page: PageTokens) -> int:

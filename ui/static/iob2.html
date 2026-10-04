@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IOB2 Tag Inspector</title>
+<style>
+  :root {
+    --purple: #5b4fe8; --purple-dark: #4a3fd1; --bg: #f3f2fd; --text: #1f2430;
+    --text-muted: #6b7280; --border: #e5e3f7;
+    --person: #16a34a; --nric: #2563eb; --phone: #7c3aed; --address: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 14px 28px; background: #fff; border-bottom: 1px solid var(--border); }
+  .topbar .logo { width: 26px; height: 26px; border-radius: 7px; background: var(--purple); }
+  .topbar h1 { font-size: 16px; margin: 0; }
+  .topbar a { margin-left: auto; color: var(--purple); text-decoration: none; font-size: 13px; font-weight: 600; }
+
+  .controls {
+    background: #fff; margin: 20px 28px; padding: 18px 22px; border-radius: 12px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .controls label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+  .controls input[type=file] { font-size: 13px; }
+  .controls input[type=text] {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; width: 260px;
+  }
+  .controls .checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 8px;
+    background: var(--purple); color: #fff; padding: 9px 18px; font-weight: 700; font-size: 13px;
+  }
+  button:hover { background: var(--purple-dark); }
+  button:disabled { background: #b8b3f0; cursor: not-allowed; }
+  button.secondary { background: var(--bg); color: var(--text); }
+  button.secondary:hover { background: #e9e7fb; }
+
+  #status { margin: 0 28px; font-size: 13px; color: var(--text-muted); }
+
+  .filter-row {
+    margin: 0 28px 10px; display: flex; gap: 10px; align-items: center;
+  }
+  .filter-row input[type=text] {
+    flex: 1; max-width: 320px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px;
+  }
+  .filter-row select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; }
+
+  .page-block { background: #fff; margin: 0 28px 20px; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .page-block h3 { margin: 0; padding: 12px 18px; background: var(--bg); font-size: 14px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 14px; background: #fafafe; color: var(--text-muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+  td { padding: 6px 14px; border-bottom: 1px solid #f3f2fd; }
+  tr:hover td { background: var(--bg); }
+  .token-cell { font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .label-O { color: var(--text-muted); }
+  .label-PERSON { color: var(--person); font-weight: 700; }
+  .label-NRIC { color: var(--nric); font-weight: 700; }
+  .label-PHONE { color: var(--phone); font-weight: 700; }
+  .label-ADDRESS { color: var(--address); font-weight: 700; }
+  .source-regex { color: var(--nric); }
+  .source-model { color: var(--purple); }
+  .source-address_heuristic { color: var(--address); }
+  .source-none { color: var(--text-muted); }
+  .hidden-row { display: none; }
+
+  #empty-state { margin: 60px 28px; text-align: center; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"></div>
+  <h1>IOB2 Tag Inspector</h1>
+  <a href="/">← Back to PDF Sanitizer</a>
+</div>
+
+<div class="controls">
+  <label>PDF file</label>
+  <input type="file" id="file-input" accept="application/pdf">
+  <div class="checkbox-row">
+    <input type="checkbox" id="no-model-check">
+    <label for="no-model-check">Tier 1 only (no model)</label>
+  </div>
+  <label>Checkpoint</label>
+  <input type="text" id="checkpoint-input" placeholder="models/checkpoints_v22/best_model.pt">
+  <button onclick="runAnalysis()" id="run-btn">Run</button>
+  <button class="secondary" onclick="downloadPlain()" id="download-btn" disabled>Download plain .txt</button>
+</div>
+
+<div id="status"></div>
+
+<div class="filter-row" id="filter-row" style="display:none;">
+  <input type="text" id="search-input" placeholder="Filter tokens…" oninput="applyFilter()">
+  <select id="label-filter" onchange="applyFilter()">
+    <option value="">All labels</option>
+    <option value="PERSON">PERSON</option>
+    <option value="NRIC">NRIC</option>
+    <option value="PHONE">PHONE</option>
+    <option value="ADDRESS">ADDRESS</option>
+    <option value="O">O only</option>
+  </select>
+</div>
+
+<div id="empty-state">Upload a PDF and click Run to see its token-by-token IOB2 tagging.</div>
+<div id="results"></div>
+
+<script>
+let lastFilename = "";
+let lastPages = [];
+
+async function runAnalysis() {
+  const fileInput = document.getElementById("file-input");
+  if (!fileInput.files.length) {
+    setStatus("Choose a PDF file first.");
+    return;
+  }
+  const runBtn = document.getElementById("run-btn");
+  runBtn.disabled = true;
+  setStatus("Running pipeline…");
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("empty-state").style.display = "none";
+
+  const form = new FormData();
+  form.append("file", fileInput.files[0]);
+  form.append("no_model", document.getElementById("no-model-check").checked ? "true" : "false");
+  const checkpoint = document.getElementById("checkpoint-input").value.trim();
+  if (checkpoint) form.append("checkpoint", checkpoint);
+
+  try {
+    const res = await fetch("/api/iob2-dump", { method: "POST", body: form });
+    const data = await res.json();
+    runBtn.disabled = false;
+    if (!res.ok) {
+      setStatus("Error: " + (data.error || res.statusText));
+      return;
+    }
+    lastFilename = data.filename;
+    lastPages = data.pages;
+    setStatus(`${data.filename} — ${data.pages.length} page(s)`);
+    document.getElementById("filter-row").style.display = "flex";
+    document.getElementById("download-btn").disabled = false;
+    renderPages(data.pages);
+  } catch (err) {
+    runBtn.disabled = false;
+    setStatus("Error: " + err.message);
+  }
+}
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+
+function renderPages(pages) {
+  const container = document.getElementById("results");
+  container.innerHTML = "";
+  pages.forEach(page => {
+    const block = document.createElement("div");
+    block.className = "page-block";
+    const h3 = document.createElement("h3");
+    h3.textContent = `Page ${page.page}`;
+    block.appendChild(h3);
+
+    const table = document.createElement("table");
+    table.innerHTML = `
+      <thead><tr>
+        <th>Token</th><th>Label</th><th>Source</th><th>Conf</th><th>Block</th><th>Line</th>
+      </tr></thead>`;
+    const tbody = document.createElement("tbody");
+    page.tokens.forEach(t => {
+      const labelType = t.label === "O" ? "O" : t.label.split("-")[1];
+      const sourceClass = `source-${t.source || "none"}`;
+      const tr = document.createElement("tr");
+      tr.dataset.token = t.text.toLowerCase();
+      tr.dataset.label = labelType;
+      tr.innerHTML = `
+        <td class="token-cell">${escapeHtml(t.text)}</td>
+        <td class="label-${labelType}">${t.label}</td>
+        <td class="${sourceClass}">${t.source || "-"}</td>
+        <td>${t.confidence != null ? t.confidence.toFixed(2) : "-"}</td>
+        <td>${t.block}</td>
+        <td>${t.line}</td>`;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    block.appendChild(table);
+    container.appendChild(block);
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function applyFilter() {
+  const query = document.getElementById("search-input").value.toLowerCase();
+  const labelFilter = document.getElementById("label-filter").value;
+  document.querySelectorAll("#results tbody tr").forEach(tr => {
+    const matchesQuery = !query || tr.dataset.token.includes(query);
+    const matchesLabel = !labelFilter || tr.dataset.label === labelFilter;
+    tr.classList.toggle("hidden-row", !(matchesQuery && matchesLabel));
+  });
+}
+
+function downloadPlain() {
+  if (!lastPages.length) return;
+  let text = "";
+  lastPages.forEach(page => {
+    page.tokens.forEach(t => { text += `${t.text} ${t.label}\n`; });
+    text += "\n";
+  });
+  const blob = new Blob([text], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (lastFilename || "dump").replace(/\.pdf$/i, "") + "_iob2.txt";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>

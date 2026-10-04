@@ -46,14 +46,24 @@ HEURISTIC_SOURCE = "address_heuristic"
 # model-only PERSON/ADDRESS span must clear to survive into redaction.
 # NRIC/PHONE are excluded here: they have their own stricter, deterministic
 # plausibility check below (_reject_implausible_model_nric_phone) that a
-# probability threshold can't improve on. Restored after real-PDF testing
-# on an out-of-domain (non-Malaysian-PII) technical document showed the
-# model producing widespread low-confidence guesses — hardware terms,
-# part numbers, bare fragments — tagged as every entity type. A model
-# has no real basis for confidence on content this far outside its
-# training distribution, and this gate is what catches that regardless
-# of how much more Malaysian-PII training data gets added.
-MIN_MODEL_CONFIDENCE = 0.5
+# probability threshold can't improve on.
+#
+# Raised from 0.5 to 0.7 after direct inspection via eval/dump_iob2.py
+# and ui/static/iob2.html (which surface each token's real confidence
+# number) showed irrelevant highlights clustering below 70% while
+# genuine entities mostly cleared it — a concrete, inspected threshold
+# rather than a guessed one. Started at 0.5 after real-PDF testing on
+# an out-of-domain technical document showed the model producing
+# widespread low-confidence guesses (hardware terms, part numbers,
+# bare fragments) tagged as every entity type; a model has no real
+# basis for confidence on content this far outside its training
+# distribution, and this gate is what catches that regardless of how
+# much more Malaysian-PII training data gets added. If this starts
+# rejecting genuine entities too aggressively, check the actual
+# confidence distribution again via the inspector before just
+# lowering the number back — the right value is whatever the real
+# data shows, not a round number.
+MIN_MODEL_CONFIDENCE = 0.70
 
 
 def resolve_page(

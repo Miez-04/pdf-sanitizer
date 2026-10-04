@@ -42,7 +42,11 @@ if str(_PROJECT_ROOT) not in sys.path:
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from pdf_ingestion.extractor import PDFIngestor
-from pipeline.conflict_resolution import resolve_document
+from pipeline.conflict_resolution import (
+    _fill_address_gaps_with_heuristic,
+    repair_iob2,
+    resolve_document,
+)
 from pipeline.coordinate_merge import EntitySpan, _split_into_line_runs, merge_document_spans
 from pipeline.inference import TierTwoPredictor
 from pipeline.redaction import apply_redactions
@@ -465,6 +469,63 @@ def download(doc_id: str):
         return "Not sanitized yet", 404
     download_name = f"sanitized_{entry['filename']}"
     return send_file(str(entry["output_path"]), as_attachment=True, download_name=download_name)
+
+
+@app.route("/iob2")
+def iob2_page():
+    return send_from_directory(app.static_folder, "iob2.html")
+
+
+@app.route("/api/iob2-dump", methods=["POST"])
+def iob2_dump():
+    """Web equivalent of eval/dump_iob2.py — same pipeline, same
+    token/label/source/confidence output, just returned as JSON for
+    ui/static/iob2.html to render instead of printed to a terminal."""
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    checkpoint_path = request.form.get("checkpoint", DEFAULT_CHECKPOINT)
+    no_model = request.form.get("no_model") == "true"
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="iob2dump_"))
+    pdf_path = tmp_dir / "input.pdf"
+    file.save(str(pdf_path))
+
+    document = PDFIngestor().extract(str(pdf_path))
+    registry = build_regex_mask_registry(document)
+
+    if no_model:
+        # Genuine Tier-1-only pass — see eval/dump_iob2.py's comment on
+        # why this isn't done by faking an all-O tier2 prediction.
+        for page in document.pages:
+            _fill_address_gaps_with_heuristic(page)
+            repair_iob2(page)
+    else:
+        predictor = _get_predictor(checkpoint_path)
+        if hasattr(predictor, "predict_document_with_confidence"):
+            labels_by_page, confidences_by_page = predictor.predict_document_with_confidence(document)
+        else:
+            labels_by_page = predictor.predict_document(document)
+            confidences_by_page = [[1.0] * len(p.tokens) for p in document.pages]
+        resolve_document(document, registry, labels_by_page, confidences_by_page)
+
+    pages_out = []
+    for page in document.pages:
+        tokens_out = [
+            {
+                "text": t.text,
+                "label": t.label,
+                "source": t.source or None,
+                "confidence": round(t.confidence, 3) if t.source == "model" else None,
+                "block": t.block_no,
+                "line": t.line_no,
+            }
+            for t in page.tokens
+        ]
+        pages_out.append({"page": page.page_num + 1, "tokens": tokens_out})
+
+    return jsonify({"filename": file.filename, "pages": pages_out})
 
 
 if __name__ == "__main__":

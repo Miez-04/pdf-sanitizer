@@ -63,7 +63,7 @@ HEURISTIC_SOURCE = "address_heuristic"
 # confidence distribution again via the inspector before just
 # lowering the number back — the right value is whatever the real
 # data shows, not a round number.
-MIN_MODEL_CONFIDENCE = 0.7
+MIN_MODEL_CONFIDENCE = 0.5
 
 
 def resolve_page(
@@ -117,6 +117,10 @@ def resolve_page(
         token.source = MODEL_SOURCE
         token.confidence = confidence
 
+    # Repair BEFORE the filters: the filters below only start a span on a
+    # "B-" token, so a model span that begins with a dangling "I-X"
+    # would skip every check and be converted to "B-X" afterwards.
+    repair_iob2(page)
     _reject_implausible_model_address(page)
     _reject_implausible_model_nric_phone(page)  # defensive no-op now for
                                                   # NRIC/PHONE (no model-
@@ -163,8 +167,6 @@ def _reject_low_confidence_model_predictions(
         else:
             i += 1
     return downgraded
-    repair_iob2(page)
-    _fill_address_gaps_with_heuristic(page)
 
 
 def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:

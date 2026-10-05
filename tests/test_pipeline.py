@@ -170,6 +170,56 @@ def test_resolve_page_discards_model_only_phone_even_if_plausible():
 # coordinate_merge: bbox union math
 # ---------------------------------------------------------------------
 
+# ---------------------------------------------------------------------
+# Confidence gate must also apply to spans that START with a dangling I-X
+# ---------------------------------------------------------------------
+
+def _empty_registry():
+    return type("R", (), {"__contains__": lambda self, k: False})()
+
+
+def test_low_confidence_span_starting_with_dangling_i_tag_is_rejected():
+    """Regression: the model emitted I-ADDRESS with no preceding B-ADDRESS
+    at 50%/52% confidence. The confidence/plausibility filters only start
+    a span on a B- token, so this span skipped them, then repair_iob2
+    turned it into B-ADDRESS and it reached the review UI at 50%."""
+    page = PageTokens(page_num=0, page_width=600, page_height=800)
+    page.tokens = [
+        _mk_token(0, "AND", "O", x=0.0),
+        _mk_token(1, "ANTI-CORRUPTION", "O", x=20.0),
+    ]
+    resolve_page(
+        page,
+        _empty_registry(),
+        ["I-ADDRESS", "I-ADDRESS"],
+        [0.50, 0.52],
+    )
+
+    assert [t.label for t in page.tokens] == ["O", "O"]
+    assert merge_page_spans(page) == []
+
+
+def test_high_confidence_span_starting_with_dangling_i_tag_is_kept():
+    """Repairing I- -> B- before the filters must not drop genuine spans:
+    a high-confidence span that contains a plausible address anchor
+    ("Jalan") still survives."""
+    page = PageTokens(page_num=0, page_width=600, page_height=800)
+    page.tokens = [
+        _mk_token(0, "Jalan", "O", x=0.0),
+        _mk_token(1, "Ampang", "O", x=20.0),
+    ]
+    resolve_page(
+        page,
+        _empty_registry(),
+        ["I-ADDRESS", "I-ADDRESS"],
+        [0.95, 0.93],
+    )
+
+    assert [t.label for t in page.tokens] == ["B-ADDRESS", "I-ADDRESS"]
+    spans = merge_page_spans(page)
+    assert len(spans) == 1 and spans[0].entity_type == "ADDRESS"
+
+
 def test_merge_page_spans_unions_bbox_correctly():
     page = PageTokens(page_num=0, page_width=600, page_height=800)
     page.tokens = [

@@ -162,6 +162,25 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
             if _UNIT_CODE_RE.match(prev) and not _looks_like_phone_number(prev):
                 start -= 1
 
+        # "Lot"/"No"/"Block"/"Off" are deliberately NOT in
+        # ADDRESS_ANCHOR_KEYWORDS above — too ambiguous to trigger a
+        # span on their own (see that set's comment: "a lot of
+        # people... phone: 12345" would otherwise false-match). But by
+        # this point the function has ALREADY found a real postcode
+        # and a genuine, unambiguous anchor keyword (jalan/lorong/
+        # taman/...), and possibly a unit/lot NUMBER right before it
+        # (the check just above). One of these specific words sitting
+        # immediately before that already-confirmed start is
+        # overwhelmingly the real Malaysian "Lot <number>," / "No
+        # <number>," prefix at this point, not incidental prose — the
+        # ambiguity that justified excluding them as a PRIMARY trigger
+        # doesn't apply once the span is already safely anchored.
+        _SAFE_PREFIX_WHEN_ALREADY_ANCHORED = {"lot", "no", "block", "off"}
+        if start > 0:
+            prev = tokens[start - 1].strip(",.;:()").lower()
+            if prev in _SAFE_PREFIX_WHEN_ALREADY_ANCHORED:
+                start -= 1
+
         # Extend forward past the postcode through a trailing city/
         # state tail (e.g. "50480 Kuala Lumpur", "68000 Ampang,
         # Selangor" — "Ampang" is a city, not in _STATE_TOKENS, so

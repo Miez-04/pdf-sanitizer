@@ -149,9 +149,9 @@ LANDLINE_PATTERN = regex.compile(
     \(?
     {_PREFIX}
     (?:
-        3 \)? {_SEP} {_FLEX8}                        # 03, Klang Valley
+        3 \)? {_SEP} {_FLEX8}                       
         |
-        [4-9] \)? {_SEP} {_FLEX7}                     # other states
+        [4-9] \)? {_SEP} {_FLEX7}                    
     )
     (?!\d)
     """,

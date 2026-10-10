@@ -63,11 +63,11 @@ def evaluate_split(test_path: str, checkpoint_path: str):
 
         # Tier 2 alone: raw model prediction, independent of what Tier 1
         # just wrote onto the tokens (predict_page doesn't mutate).
-        tier2_labels = predictor.predict_page(page)
+        tier2_labels, tier2_confs = predictor.predict_page_with_confidence(page)
 
         # Combined: the actual deployed rule — regex wins on conflicts,
         # model fills in the rest, then IOB2 boundary repair.
-        resolve_page(page, registry, tier2_labels)
+        resolve_page(page, registry, tier2_labels, tier2_confs)  # confidences -> confidence gate is exercised, as in deployment
         combined_labels = [t.label for t in page.tokens]
 
         gold_all.append(sent.labels)

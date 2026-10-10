@@ -63,7 +63,7 @@ HEURISTIC_SOURCE = "address_heuristic"
 # confidence distribution again via the inspector before just
 # lowering the number back — the right value is whatever the real
 # data shows, not a round number.
-MIN_MODEL_CONFIDENCE = 0.5
+MIN_MODEL_CONFIDENCE = 0.7
 
 
 def resolve_page(

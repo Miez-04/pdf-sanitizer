@@ -56,3 +56,37 @@ def test_two_separate_addresses_in_one_text_both_found():
     tokens = tokenize(text)
     spans = find_address_spans(tokens)
     assert len(spans) == 2
+
+
+# ---------------------------------------------------------------------
+# Key:value form layouts (UiTM student form): bare ":" tokens and label
+# words sit between the address parts.
+# ---------------------------------------------------------------------
+
+def test_lot_number_before_bare_colon_is_included():
+    """Form text tokenizes as 'LOT 373 : LORONG ...'. The bare ':' used to
+    stop the backward scan, leaving 'LOT 373' outside the address."""
+    tokens = "Alamat: : LOT 373 : LORONG SRI PAYONG, KOTA BHARU Poskod : 15150".split()
+    spans = find_address_spans(tokens)
+    assert len(spans) == 1
+    s, e = spans[0]
+    assert tokens[s] == "LOT" and tokens[s + 1] == "373"
+
+
+def test_state_value_after_negeri_label_is_included():
+    """'15150 Negeri : KELANTAN' - 'Negeri' is in the state set (for Negeri
+    Sembilan) so it used to be swallowed as the state and KELANTAN missed."""
+    tokens = "LORONG SRI PAYONG, KOTA BHARU Poskod : 15150 Negeri : KELANTAN No. Kad".split()
+    spans = find_address_spans(tokens)
+    assert len(spans) == 1
+    s, e = spans[0]
+    assert tokens[e - 1] == "KELANTAN"
+    assert "No." not in tokens[s:e]
+
+
+def test_label_hop_does_not_swallow_unrelated_field():
+    """The label hop must stop at a non-state, non-label token."""
+    tokens = "Jalan Mawar 15150 Negeri : Pekerja UiTM Johor".split()
+    spans = find_address_spans(tokens)
+    s, e = spans[0]
+    assert "Johor" not in tokens[s:e]

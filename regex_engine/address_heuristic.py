@@ -68,6 +68,15 @@ _STATE_TOKENS = {
     "putrajaya", "labuan", "wp", "malaysia",
 }
 
+# Form-field label words that can sit between a postcode and the state/
+# city value in key:value form layouts ("15150 Negeri : KELANTAN").
+# "negeri" is ALSO in _STATE_TOKENS (for "Negeri Sembilan"), so on a form
+# it gets swallowed as if it were the state itself and the real value
+# ("KELANTAN") after the ":" is missed.
+_FORM_LABEL_WORDS = {"poskod", "negeri", "bandar", "alamat"}
+_STATE_VALUE_TOKENS = _STATE_TOKENS - {"negeri"}
+_MAX_LABEL_SKIP = 4  # bare ":" / label words skipped before a state value
+
 _WINDOW = 12  # how many tokens back to search for an anchor keyword
 _EXTRA_ANCHOR_WINDOW = 3  # extra tokens to look for a SECOND, earlier anchor
                           # (catches "Pangsapuri Idam Jalan X, postcode" where
@@ -157,6 +166,17 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
         # A bare house/lot/unit number often sits immediately BEFORE
         # the (possibly now-extended) start — "45 Jalan ...", "G-2,
         # Jalan ...", "1-2-2- Pangsapuri ...". Include it if present.
+        # Key:value forms tokenize "LOT 373 : LORONG ..." with a bare ":"
+        # token between the lot number and the street keyword. Step over
+        # exactly one such token so the unit code / Lot-No prefix checks
+        # below can still see what is behind it.
+        if start > 1 and tokens[start - 1].strip(",.;:()") == "":
+            probe = tokens[start - 2].strip(",.;:()")
+            if _UNIT_CODE_RE.match(probe) and not _looks_like_phone_number(probe):
+                start -= 2
+            elif probe.lower() in {"lot", "no", "block", "off"}:
+                start -= 2
+
         if start > 0:
             prev = tokens[start - 1].strip(",.;:()")
             if _UNIT_CODE_RE.match(prev) and not _looks_like_phone_number(prev):
@@ -215,6 +235,31 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
                 extra_capitalized_used += 1
             else:
                 break
+
+        # Form layouts put label words between the postcode and the state
+        # ("15150 Negeri : KELANTAN"). Hop over bare ":" / label words
+        # (bounded) and, only if a real state value follows, include it.
+        hop = end
+        while (
+            hop < len(tokens)
+            and hop - end < _MAX_LABEL_SKIP
+            and (
+                tokens[hop].strip(",.;:()") == ""
+                or tokens[hop].strip(",.;:()").lower() in _FORM_LABEL_WORDS
+            )
+        ):
+            hop += 1
+        if (
+            hop > end
+            and hop < len(tokens)
+            and tokens[hop].strip(",.;:()").lower() in _STATE_VALUE_TOKENS
+        ):
+            end = hop
+            while (
+                end < len(tokens)
+                and tokens[end].strip(",.;:()").lower() in _STATE_VALUE_TOKENS
+            ):
+                end += 1
 
         if any(k in claimed for k in range(start, end)):
             continue  # overlaps a previously-claimed span

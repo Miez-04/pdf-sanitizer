@@ -1,9 +1,9 @@
 import random
 
 import pytest
-import spacy
 
 from data.entity_mutation import (
+    find_person_spans,
     inject_by_replacement,
     inject_connector_clause,
     tokenize,
@@ -11,11 +11,6 @@ from data.entity_mutation import (
 )
 from data.registries import generate_nric, generate_phone, generate_address, generate_person
 from regex_engine.patterns import is_plausible_nric, is_plausible_phone, NRIC_PATTERN, MOBILE_PATTERN, LANDLINE_PATTERN
-
-
-@pytest.fixture(scope="module")
-def nlp():
-    return spacy.load("en_core_web_sm")
 
 
 # ---------------------------------------------------------------------
@@ -172,57 +167,159 @@ def test_connector_clause_preserves_base_sentence_verbatim():
 
 
 # ---------------------------------------------------------------------
-# inject_by_replacement: the boundary-miss guard found during real
-# data testing (leftover real-name fragments after a partial-span
-# spaCy match)
+# find_person_spans: rule-based detector (no trained model)
 # ---------------------------------------------------------------------
 
-def test_replacement_returns_none_when_no_person_entity(nlp):
+def _spans_text(text: str) -> list[str]:
+    tokens = tokenize(text)
+    return [" ".join(tokens[a:b]) for a, b in find_person_spans(tokens)]
+
+
+def test_title_led_span_excludes_the_title():
+    assert _spans_text("Datuk Seri Anwar Ibrahim said the budget would be tabled .") == ["Anwar Ibrahim"]
+    assert _spans_text("The award was presented by Tan Sri Lee Chong Wei yesterday") == ["Lee Chong Wei"]
+
+
+def test_bare_tan_is_a_surname_not_a_title():
+    # "Tan" only counts as a title in "Tan Sri"; no anchor, no registry name -> no span.
+    assert _spans_text("Tan Ah Kow met Hong Leong Bank officials") == []
+
+
+def test_patronym_led_spans():
+    assert _spans_text("Ahmad bin Ali was arrested and Kumar a/l Raju was freed") == [
+        "Ahmad bin Ali", "Kumar a/l Raju",
+    ]
+
+
+def test_registry_anchored_span_needs_two_name_words():
+    assert _spans_text("Nurul Huda Hassan won the title") == ["Nurul Huda Hassan"]
+    assert _spans_text("Hakim said the market was calm") == []
+
+
+def test_lone_initial_is_not_a_name():
+    assert _spans_text("Datuk M. said the plan would go ahead") == []
+
+
+def test_all_caps_dateline_is_not_a_name_word():
+    # "Yaakob KOTA KINABALU:" - the dateline of the next article must not be absorbed.
+    assert _spans_text("Datuk Seri Shahrul Ikram Yaakob KOTA KINABALU: said so") == ["Shahrul Ikram Yaakob"]
+
+
+def test_place_and_venue_words_block_registry_spans():
+    assert _spans_text("Fans filled Ibrahim Stadium on Friday") == []
+    assert _spans_text("They climbed Puteri Gunung Ledang last week") == []
+
+
+def test_company_and_market_text_gives_no_person_span():
+    assert _spans_text("Sime Darby Plantation lost 35 sen to RM3.45 and Top Glove trimmed") == []
+    assert _spans_text("The weather was clear and sunny all day") == []
+
+
+def test_trailing_punctuation_is_kept_inside_the_span_token():
+    # "Abdullah," is one whitespace token; the span includes it, and
+    # inject_by_replacement re-emits the comma as its own token.
+    assert _spans_text("Tan Sri Dr Noor Hisham Abdullah, said cases fell") == ["Noor Hisham Abdullah,"]
+
+
+# ---------------------------------------------------------------------
+# inject_by_replacement
+# ---------------------------------------------------------------------
+
+def test_replacement_returns_none_when_no_person_entity():
     rng = random.Random(8)
-    result = inject_by_replacement(nlp, "The weather was clear and sunny all day", rng)
-    assert result is None
+    assert inject_by_replacement("The weather was clear and sunny all day", rng) is None
 
 
-def test_replacement_rejects_boundary_miss_case(nlp):
-    """Regression test for the exact bug found during real-data
-    testing: spaCy tags only part of a multi-word name, and a
-    capitalized word immediately follows — must reject, not splice."""
-    rng = random.Random(9)
-    # Construct a case where a plausible partial PERSON match is
-    # immediately followed by a capitalized word (simulating the
-    # boundary-miss pattern), and confirm the guard actually fires by
-    # running many seeds — if spaCy's ent happens not to end there,
-    # this specific sentence may resolve fine, so we assert the
-    # invariant more directly below instead.
-    text = "Prime Minister Ismail Sabri Yaakob instructed the ministry today"
-    for seed in range(30):
-        result = inject_by_replacement(nlp, text, random.Random(seed))
-        if result is not None:
-            # If a replacement was accepted, there must be no stray
-            # capitalized word immediately after the injected span.
-            b_idx = next(i for i, l in enumerate(result.labels) if l == "B-PERSON")
-            end = b_idx + 1
-            while end < len(result.labels) and result.labels[end] == "I-PERSON":
-                end += 1
-            if end < len(result.tokens):
-                assert not result.tokens[end][:1].isupper() or result.tokens[end] in (
-                    ".", ",",
-                ), f"leftover capitalized fragment after injection: {result.tokens[end:end+3]}"
-
-
-def test_replacement_expands_honorific_into_span(nlp):
-    rng = random.Random(10)
-    text = "The award was presented by Tan Sri Lee Chong Wei yesterday"
-    # Try several seeds since replacement depends on rng draws matching
-    # a valid injection; assert the property whenever one succeeds.
-    found_honorific_case = False
+def test_replacement_rejects_boundary_miss_case():
+    """Detector stops at an organisation word ('Holdings'): a capitalised
+    word right after the span means a real fragment would be left next to
+    the synthetic name, so the sentence must be refused, not spliced."""
     for seed in range(20):
-        result = inject_by_replacement(nlp, text, random.Random(seed))
-        if result is not None and "Tan" in result.tokens:
-            b_idx = result.tokens.index("Tan")
-            if result.labels[b_idx] == "B-PERSON":
-                found_honorific_case = True
-                assert result.labels[b_idx + 1] == "I-PERSON"  # "Sri"
-    # Not asserting found_honorific_case is True unconditionally since
-    # it depends on spaCy's exact entity span on this sentence, but if
-    # it IS found, the label alignment above must hold (already checked).
+        assert inject_by_replacement(
+            "Datuk Seri Foo Holdings Berhad announced a merger", random.Random(seed)
+        ) is None
+
+
+def test_replacement_expands_honorific_into_span():
+    text = "The award was presented by Tan Sri Lee Chong Wei yesterday"
+    for seed in range(10):
+        result = inject_by_replacement(text, random.Random(seed))
+        assert result is not None
+        b_idx = result.tokens.index("Tan")
+        assert result.labels[b_idx] == "B-PERSON"
+        assert result.labels[b_idx + 1] == "I-PERSON"  # "Sri"
+        assert result.tokens[0:4] == ["The", "award", "was", "presented"]
+        assert result.labels[:4] == ["O", "O", "O", "O"]
+        assert result.tokens[-1] == "yesterday" and result.labels[-1] == "O"
+        # real name fully replaced. Check the whole sequence, not single words:
+        # the synthetic generator may legitimately emit "Wei" or "Chong" itself.
+        joined = " ".join(result.tokens)
+        assert "Lee Chong Wei" not in joined
+
+
+def test_replacement_keeps_trailing_comma_as_separate_o_token():
+    result = inject_by_replacement("Tan Sri Dr Noor Hisham Abdullah, said cases fell", random.Random(3))
+    assert result is not None
+    assert "," in result.tokens
+    comma_idx = result.tokens.index(",")
+    assert result.labels[comma_idx] == "O"
+    assert result.labels[comma_idx - 1].endswith("PERSON")
+    assert "Noor Hisham Abdullah" not in " ".join(result.tokens)
+
+
+def test_replacement_pulls_chained_honorifics_into_span():
+    result = inject_by_replacement("Datuk Seri Dr Zambry Abdul spoke today", random.Random(4))
+    # no real-name leftovers, and every leading honorific is inside the span
+    assert result is not None
+    assert result.labels[0] == "B-PERSON" and result.tokens[:3] == ["Datuk", "Seri", "Dr"]
+    assert "Zambry" not in result.tokens
+
+
+# ---------------------------------------------------------------------
+# State-name variants in generated addresses
+# ---------------------------------------------------------------------
+
+from data.registries import STATE_VARIANTS, generate_address, vary_state_in_address, _tokenize_address
+
+
+def _variants(text: str, n: int = 80) -> set[str]:
+    return {
+        " ".join(vary_state_in_address(_tokenize_address(text), random.Random(i), 1.0))
+        for i in range(n)
+    }
+
+
+def test_state_gets_full_and_short_variants():
+    v = _variants("No. 5, Jalan Mawar, 40000 Shah Alam, Selangor")
+    assert any(x.endswith("Selangor Darul Ehsan") for x in v)
+    assert any(x.endswith(", Selangor") for x in v)
+    v = _variants("12 Jalan Tun, 70000 Seremban, Negeri Sembilan")
+    assert any(x.endswith(", N . Sembilan") for x in v) and any(x.endswith(", N9") for x in v)
+    assert any("Darul Khusus" in x for x in v)
+    v = _variants("5 Jalan Raja, 10250 Georgetown, Pulau Pinang")
+    assert any(x.endswith(", Penang") for x in v)
+
+
+def test_state_variants_leave_cities_and_streets_alone():
+    assert _variants("Kampung Y, Kuala Selangor") == {"Kampung Y , Kuala Selangor"}
+    assert _variants("5 Jalan Z, 20000 Kuala Terengganu") == {"5 Jalan Z , 20000 Kuala Terengganu"}
+    for x in _variants("Lot 2, 80000 Johor Bahru, Johor"):
+        assert "Johor Bahru" in x  # the city is never rewritten
+
+
+def test_state_variants_keep_all_caps_style():
+    for x in _variants("45 JALAN X, 70000 SEREMBAN, NEGERI SEMBILAN"):
+        assert x == x.upper()
+
+
+def test_state_variants_probability_zero_changes_nothing():
+    toks = _tokenize_address("No. 5, Jalan Mawar, 40000 Shah Alam, Selangor")
+    assert vary_state_in_address(toks, random.Random(1), 0.0) == toks
+
+
+def test_every_variant_is_a_known_state_spelling_and_generator_still_returns_address():
+    assert all(v for vs in STATE_VARIANTS.values() for v in vs)
+    rng = random.Random(0)
+    for _ in range(300):
+        tokens, label = generate_address(rng)
+        assert label == "ADDRESS" and tokens

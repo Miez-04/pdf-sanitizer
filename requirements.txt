@@ -5,9 +5,6 @@ PyMuPDF>=1.24.0
 torch>=2.2.0
 pytorch-crf>=0.7.2
 
-# Tokenization / NLP utilities
-spacy>=3.7.0
-
 # Pattern matching (Tier 1 regex engine — third-party `regex`, not
 # stdlib `re`; needed by regex_engine/patterns.py)
 regex>=2023.0.0
@@ -23,7 +20,9 @@ scikit-learn>=1.4.0
 # chain). If you hit that, run: pip install "setuptools_scm<8"  first.
 seqeval==1.2.2
 
-# UI (HITL workspace) — swap for Flask+React later if needed
+# UI (HITL workspace): Flask server (ui/server.py) + legacy Streamlit app (ui/app.py)
+flask>=3.0.0
+pillow>=10.0.0
 streamlit>=1.32.0
 
 # Dev

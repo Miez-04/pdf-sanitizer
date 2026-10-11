@@ -406,6 +406,96 @@ def _tokenize_address(text: str) -> list[str]:
     return _ADDR_TOKEN_RE.findall(text)
 
 
+# ---------------------------------------------------------------------
+# State-name variants. Real forms write the same state in several ways:
+# "Selangor" / "Selangor Darul Ehsan", "Negeri Sembilan" / "N. Sembilan" /
+# "N9", "Pulau Pinang" / "Penang", "Kuala Lumpur" / "KL" / "WP Kuala
+# Lumpur" / "Wilayah Persekutuan Kuala Lumpur". The registry and the
+# company address pool spell each state ONE way, so without this the model
+# never sees the other spellings. vary_state_in_address() swaps the
+# trailing state of a generated address for a random variant of the same
+# state, so the label stays ADDRESS and the geography stays valid.
+# ---------------------------------------------------------------------
+
+STATE_VARIANTS: dict[str, list[str]] = {
+    "Johor": ["Johor", "Johor Darul Ta'zim", "Johor Darul Takzim"],
+    "Kedah": ["Kedah", "Kedah Darul Aman"],
+    "Kelantan": ["Kelantan", "Kelantan Darul Naim"],
+    "Melaka": ["Melaka", "Malacca"],
+    "Negeri Sembilan": ["Negeri Sembilan", "Negeri Sembilan Darul Khusus",
+                        "N. Sembilan", "N.Sembilan", "N9"],
+    "Pahang": ["Pahang", "Pahang Darul Makmur"],
+    "Perak": ["Perak", "Perak Darul Ridzuan"],
+    "Perlis": ["Perlis", "Perlis Indera Kayangan"],
+    "Pulau Pinang": ["Pulau Pinang", "Penang", "P. Pinang"],
+    "Sabah": ["Sabah"],
+    "Sarawak": ["Sarawak"],
+    "Selangor": ["Selangor", "Selangor Darul Ehsan"],
+    "Terengganu": ["Terengganu", "Terengganu Darul Iman"],
+    "Kuala Lumpur": ["Kuala Lumpur", "KL", "WP Kuala Lumpur", "W.P. Kuala Lumpur",
+                     "Wilayah Persekutuan Kuala Lumpur",
+                     "Kuala Lumpur, Wilayah Persekutuan"],
+    "Putrajaya": ["Putrajaya", "WP Putrajaya", "W.P. Putrajaya",
+                  "Wilayah Persekutuan Putrajaya"],
+    "Labuan": ["Labuan", "WP Labuan", "W.P. Labuan", "Wilayah Persekutuan Labuan"],
+}
+
+# Registry spelling -> canonical key above ("WP Kuala Lumpur" is how
+# postalcode.json writes Kuala Lumpur).
+_STATE_ALIASES = {"WP Kuala Lumpur": "Kuala Lumpur", "WP Putrajaya": "Putrajaya",
+                  "WP Labuan": "Labuan"}
+
+_MAX_STATE_TOKENS = 8  # longest variant, e.g. "W . P . Kuala Lumpur" (7 tokens)
+
+
+def _state_lookup() -> dict[tuple[str, ...], str]:
+    """Returns {lowercase token tuple: canonical state} for every variant,
+    so an address that already ends with a variant is recognised too."""
+    lookup: dict[tuple[str, ...], str] = {}
+    for canonical, variants in STATE_VARIANTS.items():
+        for v in variants + [canonical]:
+            lookup[tuple(t.lower() for t in _tokenize_address(v))] = canonical
+    for alias, canonical in _STATE_ALIASES.items():
+        lookup[tuple(t.lower() for t in _tokenize_address(alias))] = canonical
+    return lookup
+
+
+_STATE_LOOKUP = _state_lookup()
+
+
+def vary_state_in_address(
+    tokens: list[str], rng: random.Random, probability: float = 0.6
+) -> list[str]:
+    """Input: address tokens (punctuation as separate tokens, as produced
+    by _tokenize_address). Output: a NEW list where the TRAILING state is
+    replaced by a random variant of the same state, with probability
+    `probability`; otherwise the same tokens.
+
+    Only the state at the very end is touched, and only when it follows a
+    comma or a 5-digit postcode, so a city that contains a state word
+    ("Johor Bahru", "Kuala Selangor") or a street name is never changed.
+    Case style is kept: an ALL-CAPS state gets an ALL-CAPS variant."""
+    if not tokens or rng.random() >= probability:
+        return tokens
+    end = len(tokens)
+    while end > 0 and tokens[end - 1] in {".", ",", ";"}:  # ignore trailing punctuation
+        end -= 1
+    for n in range(min(_MAX_STATE_TOKENS, end), 0, -1):  # longest match first
+        key = tuple(t.lower() for t in tokens[end - n : end])
+        canonical = _STATE_LOOKUP.get(key)
+        if canonical is None or end - n == 0:
+            continue
+        before = tokens[end - n - 1]
+        if before != "," and not (before.isdigit() and len(before) == 5):
+            continue  # not clearly the state slot of "<postcode> <city>, <state>"
+        variant = _tokenize_address(rng.choice(STATE_VARIANTS[canonical]))
+        original = [t for t in tokens[end - n : end] if t.isalpha()]
+        if original and all(t.isupper() for t in original):
+            variant = [t.upper() for t in variant]
+        return tokens[: end - n] + variant + tokens[end:]
+    return tokens
+
+
 def generate_address(rng: random.Random) -> tuple[list[str], str]:
     """
     Two sources, mirroring what real Malaysian addresses actually look
@@ -429,7 +519,7 @@ def generate_address(rng: random.Random) -> tuple[list[str], str]:
     pool = load_company_address_pool()
     if pool and rng.random() < 0.65:
         text = rng.choice(pool)
-        return _tokenize_address(text), "ADDRESS"
+        return vary_state_in_address(_tokenize_address(text), rng), "ADDRESS"
 
     registry = load_postcode_registry()
     prefix = rng.choice(BUILDING_PREFIXES)
@@ -459,7 +549,7 @@ def generate_address(rng: random.Random) -> tuple[list[str], str]:
             else f"{number} {road}, {poskod} {city}"
         )
 
-    return _tokenize_address(text), "ADDRESS"
+    return vary_state_in_address(_tokenize_address(text), rng), "ADDRESS"
 
 
 ENTITY_GENERATORS = {

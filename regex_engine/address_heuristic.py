@@ -66,7 +66,31 @@ _STATE_TOKENS = {
     "negeri", "sembilan", "pahang", "perak", "perlis", "pulau", "pinang",
     "penang", "sabah", "sarawak", "terengganu", "kuala", "lumpur",
     "putrajaya", "labuan", "wp", "malaysia",
+    # Federal-territory words and short forms seen in real forms
+    # ("Wilayah Persekutuan Kuala Lumpur", "W.P. Kuala Lumpur", "KL", "N9").
+    # Tokens are compared AFTER .strip(",.;:()"), so "W.P." becomes "w.p".
+    "wilayah", "persekutuan", "w.p", "kl", "n9", "n.sembilan",
 }
+
+# Ceremonial suffixes of the full state names ("Selangor Darul Ehsan",
+# "Perlis Indera Kayangan"). Each suffix word is accepted ONLY directly
+# after the word listed for it, so a street called "Aman" or a company
+# called "Iman" after a state is not swallowed.
+_STATE_SUFFIX_AFTER = {
+    "darul": {"selangor", "johor", "kedah", "kelantan", "perak", "pahang",
+              "terengganu", "sembilan"},
+    "ehsan": {"darul"}, "naim": {"darul"}, "ridzuan": {"darul"},
+    "makmur": {"darul"}, "iman": {"darul"}, "khusus": {"darul"},
+    "aman": {"darul"}, "ta'zim": {"darul"}, "takzim": {"darul"},
+    "indera": {"perlis"}, "kayangan": {"indera"},
+}
+
+
+def _is_state_suffix(word: str, prev_word: str) -> bool:
+    """Input: lowercase token (punctuation stripped) and the lowercase
+    token before it. Output: True if `word` continues a full state name
+    after `prev_word`, e.g. ('ehsan', 'darul') or ('darul', 'selangor')."""
+    return prev_word in _STATE_SUFFIX_AFTER.get(word, ())
 
 # Form-field label words that can sit between a postcode and the state/
 # city value in key:value form layouts ("15150 Negeri : KELANTAN").
@@ -218,6 +242,10 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
             if word in _STATE_TOKENS:
                 end += 1
                 found_state = True
+            elif found_state and _is_state_suffix(
+                word, tokens[end - 1].strip(",.;:()").lower()
+            ):
+                end += 1  # "Selangor [Darul] [Ehsan]"
             elif (
                 not found_state
                 and extra_capitalized_used < _MAX_EXTRA_CAPITALIZED
@@ -255,11 +283,14 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
             and tokens[hop].strip(",.;:()").lower() in _STATE_VALUE_TOKENS
         ):
             end = hop
-            while (
-                end < len(tokens)
-                and tokens[end].strip(",.;:()").lower() in _STATE_VALUE_TOKENS
-            ):
-                end += 1
+            while end < len(tokens):
+                w = tokens[end].strip(",.;:()").lower()
+                if w in _STATE_VALUE_TOKENS or _is_state_suffix(
+                    w, tokens[end - 1].strip(",.;:()").lower()
+                ):
+                    end += 1
+                else:
+                    break
 
         if any(k in claimed for k in range(start, end)):
             continue  # overlaps a previously-claimed span

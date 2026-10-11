@@ -1,3 +1,4 @@
+import pytest
 from data.entity_mutation import tokenize
 from regex_engine.address_heuristic import find_address_spans, _is_plausible_postcode
 
@@ -90,3 +91,32 @@ def test_label_hop_does_not_swallow_unrelated_field():
     spans = find_address_spans(tokens)
     s, e = spans[0]
     assert "Johor" not in tokens[s:e]
+
+
+# ---------------------------------------------------------------------
+# Full / short state names
+# ---------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "text, expected_last",
+    [
+        ("No. 5 Jalan Mawar 40000 Shah Alam Selangor Darul Ehsan No. Kad", "Ehsan"),
+        ("Lot 3 Jalan Aman 15150 Kota Bharu, Kelantan Darul Naim Poskod", "Naim"),
+        ("Jalan Ampang 50450 Wilayah Persekutuan Kuala Lumpur Tel", "Lumpur"),
+        ("12 Jalan Tun 70000 Seremban N. Sembilan Tel", "Sembilan"),
+        ("5 Jalan Raja 02000 Kangar Perlis Indera Kayangan Tel", "Kayangan"),
+        ("Jalan Raya 50450 W.P. Kuala Lumpur Tel", "Lumpur"),
+    ],
+)
+def test_full_and_short_state_names_end_the_address(text, expected_last):
+    tokens = text.split()
+    spans = find_address_spans(tokens)
+    assert len(spans) == 1
+    assert tokens[spans[0][1] - 1] == expected_last
+
+
+def test_state_suffix_words_only_count_directly_after_their_state():
+    # "Aman" is a street/company word here, NOT part of "Darul Aman".
+    tokens = "Jalan Merdeka 40000 Shah Alam Selangor Aman Sdn Bhd".split()
+    s, e = find_address_spans(tokens)[0]
+    assert tokens[e - 1] == "Selangor"

@@ -17,7 +17,8 @@ diagnose the original dataset's template-memorization problem.
 
 Scoping decisions (stated plainly, not buried):
 - English baseline (merged.txt) gets real PERSON-replacement injection
-  via spaCy where a sentence contains a detectable name; NRIC/PHONE/
+  via the rule-based detector (data.entity_mutation.find_person_spans,
+  no trained model) where a sentence contains a detectable name; NRIC/PHONE/
   ADDRESS always use connector-clause injection (these don't occur
   naturally in news prose).
 - Malay baseline (news-30k.json) gets connector-clause injection only,
@@ -38,7 +39,6 @@ import re
 from collections import Counter
 from pathlib import Path
 
-import spacy
 
 from data.entity_mutation import (
     inject_by_replacement,
@@ -146,7 +146,6 @@ def main():
     args = parser.parse_args()
 
     rng = random.Random(args.seed)
-    nlp = spacy.load("en_core_web_sm")
 
     en_sentences = load_english_baseline(args.merged)
     ms_sentences = load_malay_baseline(args.malay_news, args.malay_sample_size, rng)
@@ -188,15 +187,21 @@ def main():
             entity_counts[entity_type] += 1
 
     # English: try replacement for PERSON first, fall back to connector.
+    # person_provenance records HOW each English PERSON sentence was made,
+    # so the share of rule-based replacement can be quoted in the report.
+    person_provenance = Counter()
     en_pool = en_sentences[:]
     rng.shuffle(en_pool)
     idx = 0
     while entity_counts["PERSON"] < args.target_per_entity and idx < len(en_pool):
         text = en_pool[idx]
         idx += 1
-        sent = inject_by_replacement(nlp, text, rng)
+        sent = inject_by_replacement(text, rng)
         if sent is None:
             sent = inject_connector_clause(text, "PERSON", rng, lang="en")
+            person_provenance["connector_clause"] += 1
+        else:
+            person_provenance["rule_based_replacement"] += 1
         output.append(sent)
         entity_counts["PERSON"] += 1
 
@@ -228,6 +233,7 @@ def main():
 
     print_stats(output, f"semi_synthetic_v2 ({args.out})")
     print(f"final entity counts: {dict(entity_counts)}")
+    print(f"English PERSON sentence provenance: {dict(person_provenance)}")
     print(f"saved to {args.out}")
 
 

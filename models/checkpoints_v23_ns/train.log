@@ -1,0 +1,20 @@
+split=skeleton  train sentences: 4071  val sentences: 695
+epoch  1  train_loss=10.4497  val_f1=0.6130
+  -> new best (val_f1=0.6130), checkpoint saved
+epoch  2  train_loss=1.9904  val_f1=0.7945
+  -> new best (val_f1=0.7945), checkpoint saved
+epoch  3  train_loss=0.7330  val_f1=0.8530
+  -> new best (val_f1=0.8530), checkpoint saved
+epoch  4  train_loss=0.3851  val_f1=0.8446
+epoch  5  train_loss=0.2097  val_f1=0.8537
+  -> new best (val_f1=0.8537), checkpoint saved
+epoch  6  train_loss=0.1485  val_f1=0.9032
+  -> new best (val_f1=0.9032), checkpoint saved
+epoch  7  train_loss=0.0922  val_f1=0.9052
+  -> new best (val_f1=0.9052), checkpoint saved
+epoch  8  train_loss=0.0780  val_f1=0.8888
+epoch  9  train_loss=0.0535  val_f1=0.9020
+epoch 10  train_loss=0.0527  val_f1=0.8784
+epoch 11  train_loss=0.0384  val_f1=0.8904
+no improvement for 4 epochs, stopping early
+best val_f1: 0.9052

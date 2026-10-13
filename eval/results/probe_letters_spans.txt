@@ -1,0 +1,46 @@
+confidence gate used for the BELOW GATE flags: 0
+--- page 1: 291 tokens
+    [PERSON] min conf 0.83  Ahmad Akmal Bin Wan
+    [PERSON] min conf 0.67  Bin Ibrahim
+    [PERSON] min conf 0.69  Siti Nurhaliza Binti
+    [PERSON] min conf 0.98  Ahmad Bin Ibrahim
+    [ADDRESS] min conf 0.58  3, Jalan PJS 11/15, Bandar Sunway, 47500 Petaling Jaya, Selangor
+    [ADDRESS] min conf 0.37  Jalan Kuala Krai, 15150 Kota Bharu, Kelantan
+    [ADDRESS] min conf 0.97  No. 12, Jalan SS 2/64, 47300 Petaling Jaya, Selangor Darul Ehsan
+    [ADDRESS] min conf 0.65  59200 Kuala Lumpur
+  PERSON: both=4  only FULL=0  only WINDOWED=0
+  ADDRESS: both=4  only FULL=0  only WINDOWED=0
+--- page 2: 246 tokens
+    [PERSON] min conf 0.46  Muthu A/L Arumugam
+    [ADDRESS] min conf 0.52  Ara Kencana, 43000 Kajang, Selangor
+    [ADDRESS] min conf 0.97  No. 88, Jalan Tun Sambanthan, Brickfields, 50470 Kuala Lumpur
+    [ADDRESS] min conf 0.90  50470 Kuala Lumpur
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=3  only FULL=0  only WINDOWED=0
+--- page 3: 265 tokens
+    [ADDRESS] min conf 0.92  53300
+    [ADDRESS] min conf 0.93  No. 18, Jalan USJ 11/3D, 47620 Subang Jaya, Selangor
+    [ADDRESS] min conf 0.85  Jalan Pertiwi 2, Taman Pertiwi, 55100 Kuala Lumpur
+    [ADDRESS] min conf 0.41  Menara DBKL 1, Jalan Raja Laut, 50350 Kuala Lumpur
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=4  only FULL=0  only WINDOWED=0
+--- page 4: 232 tokens
+    [PERSON] min conf 0.49  Faridah Binti
+    [PERSON] min conf 0.72  Chong Wei Jie
+    [ADDRESS] min conf 0.98  No. 89, Jalan Green Lane, 11600 Georgetown, Pulau Pinang
+  PERSON: both=2  only FULL=0  only WINDOWED=0
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+--- page 5: 250 tokens
+    [PERSON] min conf 0.49  Syafiqah Binti Azman
+    [PERSON] min conf 0.61  JIA
+    [ADDRESS] min conf 0.63  1421, Kampung Penambang, 15350 Kota Bharu, Kelantan
+  PERSON: both=2  only FULL=0  only WINDOWED=1
+      + windowed only: Encik Kevin Tan Jia
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+
+=== TOTAL (window=40 tokens)
+  PERSON: spans found FULL page = 9   WINDOWED = 10   (below gate: 0)
+  ADDRESS: spans found FULL page = 13   WINDOWED = 13   (below gate: 0)
+
+Windowed >> full  => page length hurts (chunk at inference).
+Windowed ~= full  => the model does not know the pattern (needs data).

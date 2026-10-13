@@ -1,0 +1,23 @@
+--- page 1: 291 tokens
+  PERSON: both=4  only FULL=0  only WINDOWED=0
+  ADDRESS: both=4  only FULL=0  only WINDOWED=0
+--- page 2: 246 tokens
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=3  only FULL=0  only WINDOWED=0
+--- page 3: 265 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=4  only FULL=0  only WINDOWED=0
+--- page 4: 232 tokens
+  PERSON: both=2  only FULL=0  only WINDOWED=0
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+--- page 5: 250 tokens
+  PERSON: both=2  only FULL=0  only WINDOWED=1
+      + windowed only: Encik Kevin Tan Jia
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+
+=== TOTAL (window=40 tokens)
+  PERSON: spans found FULL page = 9   WINDOWED = 10
+  ADDRESS: spans found FULL page = 13   WINDOWED = 13
+
+Windowed >> full  => page length hurts (chunk at inference).
+Windowed ~= full  => the model does not know the pattern (needs data).

@@ -28,6 +28,20 @@
     padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; width: 260px;
   }
   .controls .checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
+  /* ---------- on/off slider (address heuristic) ---------- */
+  .switch-row { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; user-select: none; }
+  .switch { position: relative; width: 44px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch .slider { position: absolute; inset: 0; background: #c9c9d6; border-radius: 24px; transition: background .15s; }
+  .switch .slider::before {
+    content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .switch input:checked + .slider { background: var(--purple); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .switch input:focus-visible + .slider { outline: 2px solid var(--purple-dark); outline-offset: 2px; }
+  .switch-state { font-weight: 700; min-width: 28px; }
   button {
     font: inherit; cursor: pointer; border: none; border-radius: 8px;
     background: var(--purple); color: #fff; padding: 9px 18px; font-weight: 700; font-size: 13px;
@@ -83,6 +97,11 @@
     <input type="checkbox" id="no-model-check">
     <label for="no-model-check">Tier 1 only (no model)</label>
   </div>
+  <label class="switch-row" for="heuristic-toggle">
+    <span>Address heuristic</span>
+    <span class="switch"><input type="checkbox" id="heuristic-toggle" checked><span class="slider"></span></span>
+    <span class="switch-state" id="heuristic-state">ON</span>
+  </label>
   <label>Checkpoint</label>
   <input type="text" id="checkpoint-input" placeholder="models/checkpoints_v22/best_model.pt">
   <button onclick="runAnalysis()" id="run-btn">Run</button>
@@ -111,7 +130,12 @@ let lastFilename = "";
 let lastPages = [];
 
 async function runAnalysis() {
-  const fileInput = document.getElementById("file-input");
+  const heuristicToggle = document.getElementById("heuristic-toggle");
+heuristicToggle.addEventListener("change", () => {
+  document.getElementById("heuristic-state").textContent = heuristicToggle.checked ? "ON" : "OFF";
+});
+
+const fileInput = document.getElementById("file-input");
   if (!fileInput.files.length) {
     setStatus("Choose a PDF file first.");
     return;
@@ -125,6 +149,7 @@ async function runAnalysis() {
   const form = new FormData();
   form.append("file", fileInput.files[0]);
   form.append("no_model", document.getElementById("no-model-check").checked ? "true" : "false");
+  form.append("address_heuristic", document.getElementById("heuristic-toggle").checked ? "true" : "false");
   const checkpoint = document.getElementById("checkpoint-input").value.trim();
   if (checkpoint) form.append("checkpoint", checkpoint);
 
@@ -138,7 +163,7 @@ async function runAnalysis() {
     }
     lastFilename = data.filename;
     lastPages = data.pages;
-    setStatus(`${data.filename} — ${data.pages.length} page(s)`);
+    setStatus(`${data.filename} — ${data.pages.length} page(s) — address heuristic: ${data.address_heuristic ? "ON" : "OFF"}`);
     document.getElementById("filter-row").style.display = "flex";
     document.getElementById("download-btn").disabled = false;
     renderPages(data.pages);

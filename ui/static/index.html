@@ -56,6 +56,20 @@
   .feature-row { display: flex; gap: 28px; margin-top: 36px; color: var(--text-muted); font-size: 14px; }
   #file-input { display: none; }
 
+  /* ---------- on/off slider (address heuristic) ---------- */
+  .switch-row { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; user-select: none; }
+  .switch { position: relative; width: 44px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch .slider { position: absolute; inset: 0; background: #c9c9d6; border-radius: 24px; transition: background .15s; }
+  .switch .slider::before {
+    content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px;
+    background: #fff; border-radius: 50%; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .switch input:checked + .slider { background: var(--purple); }
+  .switch input:checked + .slider::before { transform: translateX(20px); }
+  .switch input:focus-visible + .slider { outline: 2px solid var(--purple-dark); outline-offset: 2px; }
+  .switch-state { font-weight: 700; min-width: 28px; }
+
   /* ---------- Review view ---------- */
   #review { display: none; }
   .filename-bar { padding: 10px 28px; background: #fff; border-bottom: 1px solid var(--border); }
@@ -241,6 +255,13 @@
   <label id="drop-zone" for="file-input">Select PDF file</label>
   <input type="file" id="file-input" accept="application/pdf">
   <div id="drop-hint">or drop PDF here</div>
+  <div style="margin-top:18px;">
+  <label class="switch-row" for="heuristic-toggle">
+    <span>Address heuristic</span>
+    <span class="switch"><input type="checkbox" id="heuristic-toggle" checked><span class="slider"></span></span>
+    <span class="switch-state" id="heuristic-state">ON</span>
+  </label>
+  </div>
   <div class="feature-row">
     <span>Offline processing</span>
     <span>PDPA compliant</span>
@@ -251,7 +272,7 @@
 
 <!-- ============ REVIEW ============ -->
 <div id="review">
-  <div class="filename-bar"><span class="filename-chip" id="filename-chip"></span></div>
+  <div class="filename-bar"><span class="filename-chip" id="filename-chip"></span> <span class="filename-chip" id="heuristic-chip" style="margin-left:8px;"></span></div>
 
   <div class="layout">
     <div class="sidebar" id="thumb-sidebar"></div>
@@ -350,10 +371,16 @@ document.body.addEventListener("drop", (e) => {
   if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
 });
 
+const heuristicToggle = document.getElementById("heuristic-toggle");
+heuristicToggle.addEventListener("change", () => {
+  document.getElementById("heuristic-state").textContent = heuristicToggle.checked ? "ON" : "OFF";
+});
+
 async function uploadFile(file) {
   showStatus("Analyzing document…", 0);
   const form = new FormData();
   form.append("file", file);
+  form.append("address_heuristic", heuristicToggle.checked ? "true" : "false");
   try {
     const res = await fetch("/api/upload", { method: "POST", body: form });
     if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
@@ -366,6 +393,7 @@ async function uploadFile(file) {
     data.pages.forEach(p => pageDims[p.page] = { width: p.width, height: p.height });
 
     document.getElementById("filename-chip").textContent = data.filename;
+    document.getElementById("heuristic-chip").textContent = "Address heuristic: " + (data.address_heuristic ? "ON" : "OFF");
     document.getElementById("landing").style.display = "none";
     document.getElementById("review").style.display = "block";
     document.getElementById("review-topbar-actions").style.display = "flex";

@@ -44,6 +44,8 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 from pdf_ingestion.extractor import PDFIngestor
 from pipeline.conflict_resolution import (
     _fill_address_gaps_with_heuristic,
+    address_heuristic,
+    address_heuristic_enabled,
     repair_iob2,
     resolve_document,
 )
@@ -54,7 +56,7 @@ from regex_engine.matcher import build_regex_mask_registry
 
 app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
 
-DEFAULT_CHECKPOINT = "models/checkpoints_v23_ns/best_model.pt"
+DEFAULT_CHECKPOINT = "models/checkpoints_v22/best_model.pt"
 
 # Whether the installed EntitySpan dataclass has a confidence field —
 # only true if the confidence-scoring pipeline patch has been applied.
@@ -100,6 +102,15 @@ def _span_to_dict(span_id: str, span: EntitySpan, line_no: int) -> dict:
     }
 
 
+def _form_flag(name: str) -> bool | None:
+    """Reads a true/false form field. Returns None when the field is missing,
+    so the environment variable / default decides."""
+    value = request.form.get(name)
+    if value is None:
+        return None
+    return value.strip().lower() in {"true", "1", "on", "yes"}
+
+
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
@@ -122,16 +133,21 @@ def upload():
     predictor = _get_predictor(checkpoint_path)
 
     registry = build_regex_mask_registry(document)
+    heuristic_flag = _form_flag("address_heuristic")  # True / False / None (= default)
     if hasattr(predictor, "predict_document_with_confidence"):
         tier2_labels_by_page, tier2_confidences_by_page = (
             predictor.predict_document_with_confidence(document)
         )
-        resolve_document(document, registry, tier2_labels_by_page, tier2_confidences_by_page)
+        with address_heuristic(heuristic_flag):
+            heuristic_used = address_heuristic_enabled()
+            resolve_document(document, registry, tier2_labels_by_page, tier2_confidences_by_page)
     else:
         # Plain/pristine pipeline (confidence-scoring patch not applied)
         # — predict_document/resolve_document only take labels.
         tier2_labels_by_page = predictor.predict_document(document)
-        resolve_document(document, registry, tier2_labels_by_page)
+        with address_heuristic(heuristic_flag):
+            heuristic_used = address_heuristic_enabled()
+            resolve_document(document, registry, tier2_labels_by_page)
 
     spans = merge_document_spans(document)
 
@@ -170,6 +186,7 @@ def upload():
         "doc_id": doc_id,
         "filename": file.filename,
         "num_pages": document.num_pages,
+        "address_heuristic": heuristic_used,
         "pages": [
             {"page": p.page_num + 1, "width": p.page_width, "height": p.page_height}
             for p in document.pages
@@ -495,20 +512,23 @@ def iob2_dump():
     document = PDFIngestor().extract(str(pdf_path))
     registry = build_regex_mask_registry(document)
 
-    if no_model:
-        # Genuine Tier-1-only pass — see eval/dump_iob2.py's comment on
-        # why this isn't done by faking an all-O tier2 prediction.
-        for page in document.pages:
-            _fill_address_gaps_with_heuristic(page)
-            repair_iob2(page)
-    else:
-        predictor = _get_predictor(checkpoint_path)
-        if hasattr(predictor, "predict_document_with_confidence"):
-            labels_by_page, confidences_by_page = predictor.predict_document_with_confidence(document)
+    heuristic_flag = _form_flag("address_heuristic")  # True / False / None (= default)
+    with address_heuristic(heuristic_flag):
+        heuristic_used = address_heuristic_enabled()
+        if no_model:
+            # Genuine Tier-1-only pass — see eval/dump_iob2.py's comment on
+            # why this isn't done by faking an all-O tier2 prediction.
+            for page in document.pages:
+                _fill_address_gaps_with_heuristic(page)
+                repair_iob2(page)
         else:
-            labels_by_page = predictor.predict_document(document)
-            confidences_by_page = [[1.0] * len(p.tokens) for p in document.pages]
-        resolve_document(document, registry, labels_by_page, confidences_by_page)
+            predictor = _get_predictor(checkpoint_path)
+            if hasattr(predictor, "predict_document_with_confidence"):
+                labels_by_page, confidences_by_page = predictor.predict_document_with_confidence(document)
+            else:
+                labels_by_page = predictor.predict_document(document)
+                confidences_by_page = [[1.0] * len(p.tokens) for p in document.pages]
+            resolve_document(document, registry, labels_by_page, confidences_by_page)
 
     pages_out = []
     for page in document.pages:
@@ -525,7 +545,7 @@ def iob2_dump():
         ]
         pages_out.append({"page": page.page_num + 1, "tokens": tokens_out})
 
-    return jsonify({"filename": file.filename, "pages": pages_out})
+    return jsonify({"filename": file.filename, "address_heuristic": heuristic_used, "pages": pages_out})
 
 
 if __name__ == "__main__":

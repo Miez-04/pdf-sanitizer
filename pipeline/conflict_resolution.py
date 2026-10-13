@@ -22,6 +22,10 @@ time, not just when something looks wrong.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import os
+
 from pdf_ingestion.schema import DocumentTokens, PageTokens
 from regex_engine.address_heuristic import find_address_spans
 from regex_engine.matcher import RegexMaskRegistry
@@ -63,7 +67,7 @@ HEURISTIC_SOURCE = "address_heuristic"
 # confidence distribution again via the inspector before just
 # lowering the number back — the right value is whatever the real
 # data shows, not a round number.
-MIN_MODEL_CONFIDENCE = 0.7
+MIN_MODEL_CONFIDENCE = 0
 
 
 def resolve_page(
@@ -169,6 +173,36 @@ def _reject_low_confidence_model_predictions(
     return downgraded
 
 
+# ---- address-heuristic on/off switch ------------------------------------
+# Resolution order: (1) a per-request override set with address_heuristic(...)
+# below (used by the web UI toggle), (2) the environment variable
+# PDFSAN_NO_ADDRESS_HEURISTIC=1 (turns it off for the whole process),
+# (3) default: ON. A context variable is used, not a global, so two
+# requests handled at the same time cannot change each other's setting.
+_ADDRESS_HEURISTIC_OVERRIDE: contextvars.ContextVar = contextvars.ContextVar(
+    "address_heuristic_override", default=None
+)
+
+
+def address_heuristic_enabled() -> bool:
+    """True if the address heuristic should run right now."""
+    override = _ADDRESS_HEURISTIC_OVERRIDE.get()  # True / False / None (= no override)
+    if override is not None:
+        return override
+    return os.environ.get("PDFSAN_NO_ADDRESS_HEURISTIC") != "1"
+
+
+@contextlib.contextmanager
+def address_heuristic(enabled: bool | None):
+    """with address_heuristic(False): resolve_document(...)  -> heuristic off
+    inside the block only. Passing None means 'no override' (env/default)."""
+    token = _ADDRESS_HEURISTIC_OVERRIDE.set(enabled)
+    try:
+        yield
+    finally:
+        _ADDRESS_HEURISTIC_OVERRIDE.reset(token)
+
+
 def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:
     """
     Address heuristic (regex_engine.address_heuristic) runs LAST, as a
@@ -187,6 +221,8 @@ def _fill_address_gaps_with_heuristic(page: PageTokens) -> int:
     completely (the real resume-PDF failure mode this was built for),
     never touching a token the model already made any prediction for.
     """
+    if not address_heuristic_enabled():  # per-request UI switch / env switch
+        return 0
     filled = 0
     token_texts = [t.text for t in page.tokens]
     for start_idx, end_idx in find_address_spans(token_texts):

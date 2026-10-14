@@ -1,0 +1,11 @@
+loaded 1244 English baseline sentences
+loaded 12037 Malay baseline sentences
+--- semi_synthetic_v2 (data/processed/semi_synthetic_v17_ns3k.txt) ---
+sentences: 10652
+unique skeletons: 8790  (avg 1.2 sentences/skeleton)
+entity instances: {'PHONE': 3000, 'NRIC': 3000, 'ADDRESS': 3000, 'PERSON': 3000}
+total tokens: 278890
+
+final entity counts: {'PERSON': 3000, 'ADDRESS': 3000, 'PHONE': 3000, 'NRIC': 3000}
+English PERSON sentence provenance: {'connector_clause': 1095, 'rule_based_replacement': 149}
+saved to data/processed/semi_synthetic_v17_ns3k.txt

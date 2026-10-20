@@ -24,6 +24,9 @@ from __future__ import annotations
 
 import regex
 
+from regex_engine.malaysia_places import (
+    CITY_STATES, MAX_CITY_WORDS, MAX_STATE_WORDS, STATE_PHRASES,
+)
 from regex_engine.patterns import MOBILE_PATTERN, LANDLINE_PATTERN
 
 # Malaysian postcodes run 01000-98999 in practice (verified range
@@ -137,6 +140,186 @@ def _is_plausible_postcode(text: str) -> bool:
     return 1000 <= code <= 98999
 
 
+
+# ---- addresses WITHOUT a postcode ------------------------------------------
+# Rule A (street-led):  <anchor word> ... <City>[,] <State>   or   <anchor> ..., <City>
+#                       "Jalan Ampang, Kuala Lumpur", "Lorong Mawar, Kota Bharu, Kelantan"
+# Rule B (bare pair):   <City>[,] <State> where the registry says the city
+#                       belongs to that state ("Kota Bharu, Kelantan")
+# Both are switchable. Rule B is a policy choice: a city + state is a coarse
+# location, not a street address.
+NO_POSTCODE_ENABLED = True
+BARE_CITY_STATE_ENABLED = True
+_NOPC_WINDOW = 14  # tokens scanned after the anchor word
+# ordinary words that mean the text has turned into a sentence, not an address
+_PROSE_STOPWORDS = {
+    "dan", "yang", "di", "kepada", "untuk", "atau", "dengan", "oleh", "dari", "pada", "ini", "itu",
+    "and", "the", "of", "in", "on", "at", "to", "is", "are", "was", "were", "for", "with", "from",
+    "kerana", "telah", "akan", "adalah", "sila", "kami", "saya",
+}
+# a city right after one of these is a campus / institution / title, not a location
+_NOT_AN_ADDRESS_BEFORE_CITY = {
+    "utm", "uitm", "ukm", "upm", "usm", "um", "universiti", "university", "kampus", "campus", "hospital",
+    "klinik", "jabatan", "pejabat", "majlis", "dewan", "bandaraya", "bank", "kolej", "sekolah", "permaisuri",
+    "sultan", "sultanah", "tuanku", "tunku", "tengku", "raja", "datuk", "dato", "dato'",
+}
+_FEDERAL = {"kuala lumpur", "putrajaya", "labuan"}
+
+
+def _extend_start(tokens: list[str], start: int) -> int:
+    """Given the index of an anchor keyword, returns the (possibly earlier)
+    start of the address: an earlier anchor in a small window, a unit/lot
+    code, a bare ':' between a lot number and the keyword, and a safe
+    'Lot' / 'No' / 'Block' / 'Off' lead-in word. Shared by the postcode rule
+    and the no-postcode rules."""
+    # Look a bit further back for an EARLIER anchor keyword — e.g.
+    # "pangsapuri" sitting before "jalan" — since a building-type
+    # word further from the postcode is often the more complete
+    # start of the address, not the nearer street keyword alone.
+    # Plain descriptive words in between (e.g. "Idam" in
+    # "Pangsapuri Idam Jalan ...") don't break the scan — only the
+    # fixed window size bounds how far back this looks.
+    for k in range(start - 1, max(-1, start - 1 - _EXTRA_ANCHOR_WINDOW), -1):
+        word = tokens[k].strip(",.;:()").lower()
+        if word in ADDRESS_ANCHOR_KEYWORDS:
+            start = k
+            break
+
+    # A bare house/lot/unit number often sits immediately BEFORE
+    # the (possibly now-extended) start — "45 Jalan ...", "G-2,
+    # Jalan ...", "1-2-2- Pangsapuri ...". Include it if present.
+    # Key:value forms tokenize "LOT 373 : LORONG ..." with a bare ":"
+    # token between the lot number and the street keyword. Step over
+    # exactly one such token so the unit code / Lot-No prefix checks
+    # below can still see what is behind it.
+    if start > 1 and tokens[start - 1].strip(",.;:()") == "":
+        probe = tokens[start - 2].strip(",.;:()")
+        if _UNIT_CODE_RE.match(probe) and not _looks_like_phone_number(probe):
+            start -= 2
+        elif probe.lower() in {"lot", "no", "block", "off"}:
+            start -= 2
+
+    if start > 0:
+        prev = tokens[start - 1].strip(",.;:()")
+        if _UNIT_CODE_RE.match(prev) and not _looks_like_phone_number(prev):
+            start -= 1
+
+    # "Lot"/"No"/"Block"/"Off" are deliberately NOT in
+    # ADDRESS_ANCHOR_KEYWORDS above — too ambiguous to trigger a
+    # span on their own (see that set's comment: "a lot of
+    # people... phone: 12345" would otherwise false-match). But by
+    # this point the function has ALREADY found a real postcode
+    # and a genuine, unambiguous anchor keyword (jalan/lorong/
+    # taman/...), and possibly a unit/lot NUMBER right before it
+    # (the check just above). One of these specific words sitting
+    # immediately before that already-confirmed start is
+    # overwhelmingly the real Malaysian "Lot <number>," / "No
+    # <number>," prefix at this point, not incidental prose — the
+    # ambiguity that justified excluding them as a PRIMARY trigger
+    # doesn't apply once the span is already safely anchored.
+    _SAFE_PREFIX_WHEN_ALREADY_ANCHORED = {"lot", "no", "block", "off"}
+    if start > 0:
+        prev = tokens[start - 1].strip(",.;:()").lower()
+        if prev in _SAFE_PREFIX_WHEN_ALREADY_ANCHORED:
+            start -= 1
+    return start
+
+
+
+
+def _norm_words(tokens: list[str]) -> list[str]:
+    return [t.strip(",.;:()").lower() for t in tokens]
+
+
+def _match_phrase(words: list[str], i: int, table: dict, max_words: int):
+    """Longest phrase of `table` (keys are tuples of lowercase words) that
+    starts at words[i]. Returns (end_index_exclusive, value) or None."""
+    for n in range(min(max_words, len(words) - i), 0, -1):
+        key = tuple(words[i : i + n])
+        if key in table:
+            return i + n, table[key]
+    return None
+
+
+def _state_ok_for_city(state: str, city: tuple[str, ...]) -> bool:
+    states = CITY_STATES.get(city, frozenset())
+    if state == "wp":
+        return bool(states & _FEDERAL)
+    return state in states
+
+
+def _find_no_postcode_spans(
+    tokens: list[str], claimed: set[int]
+) -> list[tuple[int, int]]:
+    words = _norm_words(tokens)
+    n = len(tokens)
+    out: list[tuple[int, int]] = []
+
+    def free(a: int, b: int) -> bool:
+        return not any(k in claimed for k in range(a, b))
+
+    # Rule A: street-led
+    for a in range(n):
+        if words[a] not in ADDRESS_ANCHOR_KEYWORDS or a in claimed:
+            continue
+        end = None
+        for k in range(a + 1, min(n, a + 1 + _NOPC_WINDOW)):
+            if words[k] in _PROSE_STOPWORDS or words[k] in _NOT_AN_ADDRESS_BEFORE_CITY or k in claimed:
+                break  # prose, or an institution name such as "Dewan Bandaraya Kuala Lumpur"
+            st = _match_phrase(words, k, STATE_PHRASES, MAX_STATE_WORDS)
+            if st and k >= a + 2:  # at least one street-name word in between ("Jalan Johor" alone is not enough)
+                end = st[0]
+                break
+            ct = _match_phrase(words, k, CITY_STATES, MAX_CITY_WORDS)
+            if ct and tokens[k - 1].endswith(",") and tokens[k][:1].isupper():
+                end = ct[0]
+                j = end + 1 if end < n and words[end] == "" else end  # optional bare ","
+                st2 = _match_phrase(words, j, STATE_PHRASES, MAX_STATE_WORDS) if j < n else None
+                if st2 and _state_ok_for_city(st2[1], tuple(words[k:end])):
+                    end = st2[0]
+                break
+        if end is None:
+            continue
+        start = _extend_start(tokens, a)
+        if free(start, end):
+            out.append((start, end))
+            claimed.update(range(start, end))
+
+    # Rule B: bare "City, State" pair validated against the registry
+    if BARE_CITY_STATE_ENABLED:
+        i = 0
+        while i < n:
+            if i in claimed or not tokens[i][:1].isupper():
+                i += 1
+                continue
+            ct = _match_phrase(words, i, CITY_STATES, MAX_CITY_WORDS)
+            if ct is None:
+                i += 1
+                continue
+            c_end = ct[0]
+            j = c_end + 1 if c_end < n and words[c_end] == "" else c_end
+            st = _match_phrase(words, j, STATE_PHRASES, MAX_STATE_WORDS) if j < n else None
+            before = words[i - 1] if i > 0 else ""
+            city = tuple(words[i:c_end])
+            if (
+                st
+                and city not in {tuple(k) for k in STATE_PHRASES if len(k) == len(city)} - {("kuala", "lumpur")}  # keep it a CITY
+                and before not in _NOT_AN_ADDRESS_BEFORE_CITY
+                and _state_ok_for_city(st[1], city)
+                and city != tuple(words[j : st[0]])  # "Kuala Lumpur, Kuala Lumpur" is not a pair
+                and free(i, st[0])
+            ):
+                start = i
+                if i > 0 and _is_plausible_postcode(tokens[i - 1].strip(",.;:()")) and (i - 1) not in claimed:
+                    start = i - 1  # "10300 Georgetown, Pulau Pinang": keep the postcode in the span
+                out.append((start, st[0]))
+                claimed.update(range(start, st[0]))
+                i = st[0]
+            else:
+                i += 1
+    return out
+
+
 def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
     """
     tokens: whitespace-tokenized text (same granularity as
@@ -174,56 +357,7 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
         if start is None:
             continue  # no nearby keyword — too risky to claim, skip
 
-        # Look a bit further back for an EARLIER anchor keyword — e.g.
-        # "pangsapuri" sitting before "jalan" — since a building-type
-        # word further from the postcode is often the more complete
-        # start of the address, not the nearer street keyword alone.
-        # Plain descriptive words in between (e.g. "Idam" in
-        # "Pangsapuri Idam Jalan ...") don't break the scan — only the
-        # fixed window size bounds how far back this looks.
-        for k in range(start - 1, max(-1, start - 1 - _EXTRA_ANCHOR_WINDOW), -1):
-            word = tokens[k].strip(",.;:()").lower()
-            if word in ADDRESS_ANCHOR_KEYWORDS:
-                start = k
-                break
-
-        # A bare house/lot/unit number often sits immediately BEFORE
-        # the (possibly now-extended) start — "45 Jalan ...", "G-2,
-        # Jalan ...", "1-2-2- Pangsapuri ...". Include it if present.
-        # Key:value forms tokenize "LOT 373 : LORONG ..." with a bare ":"
-        # token between the lot number and the street keyword. Step over
-        # exactly one such token so the unit code / Lot-No prefix checks
-        # below can still see what is behind it.
-        if start > 1 and tokens[start - 1].strip(",.;:()") == "":
-            probe = tokens[start - 2].strip(",.;:()")
-            if _UNIT_CODE_RE.match(probe) and not _looks_like_phone_number(probe):
-                start -= 2
-            elif probe.lower() in {"lot", "no", "block", "off"}:
-                start -= 2
-
-        if start > 0:
-            prev = tokens[start - 1].strip(",.;:()")
-            if _UNIT_CODE_RE.match(prev) and not _looks_like_phone_number(prev):
-                start -= 1
-
-        # "Lot"/"No"/"Block"/"Off" are deliberately NOT in
-        # ADDRESS_ANCHOR_KEYWORDS above — too ambiguous to trigger a
-        # span on their own (see that set's comment: "a lot of
-        # people... phone: 12345" would otherwise false-match). But by
-        # this point the function has ALREADY found a real postcode
-        # and a genuine, unambiguous anchor keyword (jalan/lorong/
-        # taman/...), and possibly a unit/lot NUMBER right before it
-        # (the check just above). One of these specific words sitting
-        # immediately before that already-confirmed start is
-        # overwhelmingly the real Malaysian "Lot <number>," / "No
-        # <number>," prefix at this point, not incidental prose — the
-        # ambiguity that justified excluding them as a PRIMARY trigger
-        # doesn't apply once the span is already safely anchored.
-        _SAFE_PREFIX_WHEN_ALREADY_ANCHORED = {"lot", "no", "block", "off"}
-        if start > 0:
-            prev = tokens[start - 1].strip(",.;:()").lower()
-            if prev in _SAFE_PREFIX_WHEN_ALREADY_ANCHORED:
-                start -= 1
+        start = _extend_start(tokens, start)
 
         # Extend forward past the postcode through a trailing city/
         # state tail (e.g. "50480 Kuala Lumpur", "68000 Ampang,
@@ -297,5 +431,9 @@ def find_address_spans(tokens: list[str]) -> list[tuple[int, int]]:
 
         spans.append((start, end))
         claimed.update(range(start, end))
+
+    if NO_POSTCODE_ENABLED:
+        spans.extend(_find_no_postcode_spans(tokens, claimed))
+        spans.sort()
 
     return spans

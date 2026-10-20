@@ -29,6 +29,11 @@ from pathlib import Path
 from data.entity_mutation import tokenize
 from models.dataset import Sentence
 from regex_engine.address_heuristic import find_address_spans
+import regex_engine.address_heuristic as _address_heuristic
+
+# These samples were labelled with the POSTCODE rule only. Keep it that way even though the heuristic
+# now also has no-postcode rules, so regenerating real_samples.txt reproduces the original labels.
+_address_heuristic.NO_POSTCODE_ENABLED = False
 from regex_engine.matcher import match_page
 from pdf_ingestion.schema import BBox, PageTokens, Token
 

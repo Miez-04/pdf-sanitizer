@@ -1,0 +1,223 @@
+confidence gate used for the BELOW GATE flags: 0
+--- page 1: 5 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 2: 5 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 3: 134 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 4: 92 tokens
+    [ADDRESS] min conf 0.72  Petra, 54100 Kuala Lumpur
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+--- page 5: 87 tokens
+    [PERSON] min conf 0.99  Wan Mohd. Zawawi bin Wan Abd Rahman
+    [PERSON] min conf 1.00  Siti Salamah binti Mohd Shihab
+    [PERSON] min conf 1.00  Mohd Najib bin Masroom
+    [PERSON] min conf 1.00  Hasanuddin bin Othman
+    [PERSON] min conf 0.95  Latifah binti Md Yatim
+    [PERSON] min conf 0.85  Rabiah binti Alias Noorhafiza binti Noordin Erni Azreena binti Affendi
+    [PERSON] min conf 0.73  Azrul Hesyam bin Wagiran Siti Zulaikha binti Zakaria
+    [PERSON] min conf 1.00  Kuntum binti Md Ariff
+    [PERSON] min conf 0.96  Rashidah binti Sarip Syarifah
+    [PERSON] min conf 0.66  Syaliyana binti Syed Ali Rohani binti Parman
+    [PERSON] min conf 1.00  Noraini binti Ramli
+    [PERSON] min conf 1.00  Mohd Shahrol bin Abdul Ghani
+  PERSON: both=12  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 6: 75 tokens
+    [ADDRESS] min conf 0.51  PENULISAN SURAT
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=1  only FULL=0  only WINDOWED=0
+--- page 7: 137 tokens
+    [PERSON] min conf 0.70  DATO’ WAN MOHD. ZAWAWI BIN WAN ABD RAHMAN
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 8: 164 tokens
+    [PERSON] min conf 0.92  SITI SALAMAH BINTI MOHD SHIHAB
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 9: 233 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 10: 143 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 11: 158 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 12: 160 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 13: 43 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 14: 165 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 15: 119 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 16: 96 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 17: 131 tokens
+    [PERSON] min conf 0.99  Anis Syazwani binti Fadzillah
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 18: 69 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 19: 92 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 20: 104 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 21: 53 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 22: 91 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 23: 129 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 24: 163 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 25: 13 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 26: 107 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 27: 101 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 28: 139 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 29: 36 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 30: 37 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 31: 244 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 32: 38 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 33: 83 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 34: 214 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 35: 254 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 36: 145 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 37: 128 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=1
+      + windowed only: Jalan Sultan Yahya Petra, 54100 KUALA LUMPUR.
+--- page 38: 102 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 39: 126 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 40: 27 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 41: 52 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 42: 19 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 43: 19 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 44: 153 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 45: 19 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 46: 88 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 47: 19 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 48: 51 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 49: 71 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 50: 103 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 51: 13 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 52: 33 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 53: 46 tokens
+    [PERSON] min conf 0.96  (HASANUDDIN BIN OTHMAN)
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 54: 47 tokens
+    [PERSON] min conf 0.97  (HASANUDDIN BIN OTHMAN)
+  PERSON: both=1  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 55: 16 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 56: 10 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 57: 18 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 58: 10 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 59: 17 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 60: 10 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 61: 18 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 62: 10 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 63: 53 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 64: 151 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+--- page 65: 5 tokens
+  PERSON: both=0  only FULL=0  only WINDOWED=0
+  ADDRESS: both=0  only FULL=0  only WINDOWED=0
+
+=== TOTAL (window=40 tokens)
+  PERSON: spans found FULL page = 17   WINDOWED = 17   (below gate: 0)
+  ADDRESS: spans found FULL page = 2   WINDOWED = 3   (below gate: 0)
+
+Windowed >> full  => page length hurts (chunk at inference).
+Windowed ~= full  => the model does not know the pattern (needs data).

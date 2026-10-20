@@ -267,8 +267,18 @@ def _reg(rng: random.Random) -> str:
 _SLOT = re.compile(r"^(\(?)\{(\w+)\}([^\w{]*)$")
 
 
-def render(template: str, rng: random.Random, ms: bool = False, ctx: dict | None = None) -> Sentence:
+def render(
+    template: str,
+    rng: random.Random,
+    ms: bool = False,
+    ctx: dict | None = None,
+    person_fn=None,
+    extra_slots: dict | None = None,
+) -> Sentence:
+    """person_fn(rng)->tokens replaces the person generator; extra_slots maps a slot name
+    (e.g. "ADDR") to fn(rng)->(entity_kind_or_"O", tokens) and overrides the built-in slot."""
     ctx = ctx if ctx is not None else {}
+    person_gen = person_fn or person_tokens
     tokens: list[str] = []
     labels: list[str] = []
     for raw in template.split():
@@ -280,22 +290,28 @@ def render(template: str, rng: random.Random, ms: bool = False, ctx: dict | None
             if opener:
                 tokens.append("(")
                 labels.append("O")
-            if kind in ("P", "PU"):
+            if extra_slots and kind in extra_slots:
+                ent_kind, slot_tokens = extra_slots[kind](rng)
+                if ent_kind == "O":
+                    t, l = _o(" ".join(slot_tokens) + trailing)
+                else:
+                    t, l = _entity(ent_kind, slot_tokens, trailing)
+            elif kind in ("P", "PU"):
                 # {P} always draws a NEW person (and remembers it); {PU} is the same
                 # kind of slot written in ALL CAPS
                 if kind == "P" or "person" not in ctx:
-                    ctx["person"] = person_tokens(rng)
+                    ctx["person"] = person_gen(rng)
                 toks = [x.upper() for x in ctx["person"]] if kind == "PU" else ctx["person"]
                 t, l = _entity("PERSON", toks, trailing)
             elif kind in ("S", "SU"):
                 # {S} = the SAME person as the earlier {P} of this letter (a signature
                 # repeats the writer's name); a new person if there was none
                 if "person" not in ctx:
-                    ctx["person"] = person_tokens(rng)
+                    ctx["person"] = person_gen(rng)
                 toks = [x.upper() for x in ctx["person"]] if kind == "SU" else ctx["person"]
                 t, l = _entity("PERSON", toks, trailing)
             elif kind == "PF":
-                base = ctx.get("person") or person_tokens(rng)
+                base = ctx.get("person") or person_gen(rng)
                 t, l = _entity("PERSON", given_name_part(rng, base), trailing)
             elif kind == "NRIC":
                 t, l = _entity("NRIC", nric_tokens(rng), trailing)
@@ -331,6 +347,9 @@ def render(template: str, rng: random.Random, ms: bool = False, ctx: dict | None
     return Sentence(tokens=fixed_t, labels=fixed_l)
 
 
+_render = render
+
+
 def _cat(parts: list[Sentence]) -> Sentence:
     t: list[str] = []
     l: list[str] = []
@@ -344,7 +363,10 @@ def _cat(parts: list[Sentence]) -> Sentence:
 # Families
 # ---------------------------------------------------------------------
 
-def letter_block(rng: random.Random) -> Sentence:
+def letter_block(rng: random.Random, person_fn=None, extra_slots: dict | None = None) -> Sentence:
+    def render(t, r, ms=False, ctx=None):  # local shadow: same call shape, hooks applied
+        return _render(t, r, ms, ctx, person_fn, extra_slots)
+
     ms = rng.random() < 0.35
     ctx: dict = {}
     sender_options = [
@@ -381,9 +403,9 @@ def letter_block(rng: random.Random) -> Sentence:
     return _cat(parts)
 
 
-def mention_sentence(rng: random.Random) -> Sentence:
+def mention_sentence(rng: random.Random, person_fn=None, extra_slots: dict | None = None) -> Sentence:
     ms = rng.random() < 0.4
-    return render(rng.choice(BODY_MS if ms else BODY_EN), rng, ms)
+    return render(rng.choice(BODY_MS if ms else BODY_EN), rng, ms, person_fn=person_fn, extra_slots=extra_slots)
 
 
 def team_list(rng: random.Random) -> Sentence:

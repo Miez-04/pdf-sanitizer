@@ -120,3 +120,56 @@ def test_state_suffix_words_only_count_directly_after_their_state():
     tokens = "Jalan Merdeka 40000 Shah Alam Selangor Aman Sdn Bhd".split()
     s, e = find_address_spans(tokens)[0]
     assert tokens[e - 1] == "Selangor"
+
+
+# ---------------------------------------------------------------------
+# Addresses WITHOUT a postcode (street-led and bare City, State)
+# ---------------------------------------------------------------------
+
+def _found(text):
+    toks = text.split()
+    return [" ".join(toks[a:b]) for a, b in find_address_spans(toks)]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Sila hantar ke Jalan Ampang, Kuala Lumpur segera", "Jalan Ampang, Kuala Lumpur"),
+        ("No. 12, Jalan Mawar, Taman Indah, Kota Bharu, Kelantan dan seterusnya",
+         "No. 12, Jalan Mawar, Taman Indah, Kota Bharu, Kelantan"),
+        ("Lot 3, Kampung Baru, Kajang, Selangor Darul Ehsan sahaja", "Lot 3, Kampung Baru, Kajang, Selangor Darul Ehsan"),
+        ("Beliau tinggal di Kota Bharu, Kelantan sejak 2010", "Kota Bharu, Kelantan"),
+        ("Cawangan Central Square, 10300 Georgetown, Pulau Pinang", "10300 Georgetown, Pulau Pinang"),
+    ],
+)
+def test_addresses_without_a_postcode_are_found(text, expected):
+    assert _found(text) == [expected]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Kuala Lumpur: Arkib Negara Malaysia. 2007",                       # publication place
+        "Pejabat Pendaftar UTM Kuala Lumpur kerana telah mengambil inisiatif",  # campus name
+        "UTM Johor Bahru 6. Anugerah Fasilitator Terbaik",
+        "Permaisuri Johor Sumber : Surat Pekeliling Am",                   # title, not a place
+        "Jalan Johor itu sesak",                                           # street named like a state
+        "Kota Bharu, Selangor sahaja",                                     # city and state do not match
+        "di sepanjang Jalan Pertiwi 2 dan Jalan Pertiwi 4 yang tersumbat di Kuala Lumpur",
+        "Jabatan Perkhidmatan Bandar & Kesihatan Dewan Bandaraya Kuala Lumpur (DBKL),",  # institution name
+    ],
+)
+def test_city_names_in_other_roles_are_not_addresses(text):
+    assert _found(text) == []
+
+
+def test_postcode_rule_is_unchanged_and_no_postcode_rules_can_be_switched_off(monkeypatch):
+    import regex_engine.address_heuristic as H
+    text = "No. 5 Jalan Mawar 40000 Shah Alam Selangor Darul Ehsan"
+    assert _found(text) == [text]
+    monkeypatch.setattr(H, "NO_POSTCODE_ENABLED", False)
+    assert _found("Jalan Ampang, Kuala Lumpur segera") == []
+    monkeypatch.setattr(H, "NO_POSTCODE_ENABLED", True)
+    monkeypatch.setattr(H, "BARE_CITY_STATE_ENABLED", False)
+    assert _found("Beliau tinggal di Kota Bharu, Kelantan sejak 2010") == []
+    assert _found("Sila hantar ke Jalan Ampang, Kuala Lumpur segera") == ["Jalan Ampang, Kuala Lumpur"]

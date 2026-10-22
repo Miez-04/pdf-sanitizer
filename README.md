@@ -54,10 +54,10 @@ pip install -r requirements.txt
 1. [x] Repo scaffold
 2. [x] PDF ingestion & spatial layer (`pdf_ingestion/`)
 3. [x] Regex engine (`regex_engine/`)
-4. [ ] Semi-synthetic dataset pipeline (`data/`)
-5. [ ] Bi-LSTM-CRF model + training (`models/`)
-6. [ ] Conflict resolution & vector redaction (`pipeline/`)
-7. [ ] Human-in-the-loop review UI (`ui/`)
+4. [x] Semi-synthetic dataset pipeline (`data/`)
+5. [x] Bi-LSTM-CRF model + training (`models/`)
+6. [x] Conflict resolution & vector redaction (`pipeline/`)
+7. [x] Human-in-the-loop review UI (`ui/`)
 8. [ ] Evaluation (Precision / Recall / F1) (`eval/`)
 
 ## Status
